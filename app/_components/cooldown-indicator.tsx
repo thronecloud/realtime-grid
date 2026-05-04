@@ -15,7 +15,8 @@ export function CooldownIndicator() {
 
   const remaining = cooldownUntil ? Math.max(0, cooldownUntil - Date.now()) : 0;
   const ready = remaining === 0;
-  const filled = Math.round((1 - remaining / 10_000) * SEGMENTS);
+  // Cooldown is 1s now (was 10s) — denominator updated to match.
+  const filled = Math.round((1 - remaining / 1_000) * SEGMENTS);
 
   return (
     <div className="flex items-center gap-3">

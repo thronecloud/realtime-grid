@@ -133,7 +133,7 @@ export function GridCanvas({ onCaptureRejected, onJackpot }: Props) {
         onJackpot?.(mult);
       }
     }
-    useStore.getState().startCooldown(10);
+    useStore.getState().startCooldown(1);
     if (s.userId && s.me && res.tile) {
       broadcastCapture({ playerId: s.userId, tileId, kind: res.tile.kind });
     }
