@@ -29,37 +29,42 @@ export function HotStreak() {
   }, []);
 
   return (
-    <section>
-      <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[var(--accent-signal)] text-[10px]">▸</span>
-          <span className="label">HOT · 1H</span>
-        </div>
-        <span className={`text-[9px] uppercase tracking-[0.2em] text-[var(--fg-dim)] ${loading ? 'blink' : ''}`}>
-          {loading ? 'SCAN' : 'LIVE'}
+    <section className="bg-[var(--bg-paper)]">
+      <div className="flex items-center justify-between border-b-[1.5px] border-[var(--ink)] px-3 py-2">
+        <span className="hand text-[15px] font-bold tracking-[0.1em]">▸ HOT · 1H</span>
+        <span
+          className={`caption ${loading ? 'blink' : ''}`}
+          style={{ color: 'var(--accent-signal)' }}
+        >
+          ● {loading ? 'SCAN' : 'LIVE'}
         </span>
       </div>
-      <ol className="text-[11px]">
+      <ol className="px-3 py-2">
         {rows.map((r, i) => {
           const p = players.get(r.player_id);
           return (
-            <li key={r.player_id} className="flex items-center gap-2 px-3 py-1.5">
-              <span className="w-5 text-right text-[10px] tabular-nums tnum text-[var(--fg-dim)]">
+            <li key={r.player_id} className="flex items-center gap-2 py-0.5">
+              <span className="w-[18px] font-mono text-[10px] tabular-nums tnum text-[var(--fg-muted)]">
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="chip" style={{ background: p?.color ?? '#666' }} />
-              <span className="truncate text-[var(--fg)]">
-                {p?.name ?? r.player_id.slice(0, 6)}
+              <span className="chip" style={{ background: p?.color ?? '#888' }} />
+              <span className="hand text-[14px]">
+                {(p?.name ?? r.player_id.slice(0, 6)).toLowerCase()}
               </span>
-              <span className="ml-auto font-mono text-[11px] tabular-nums tnum text-[var(--accent-signal)]">
+              <span className="ml-auto font-mono text-[12px] font-bold tabular-nums tnum text-[var(--accent-signal)]">
                 +{r.n}
               </span>
             </li>
           );
         })}
         {rows.length === 0 && (
-          <li className="px-3 py-6 text-center text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
-            quiet hour
+          <li className="py-3">
+            <div
+              className="border border-dashed border-[var(--ink)] p-2"
+              style={{ transform: 'rotate(-0.2deg)' }}
+            >
+              <div className="hand text-center text-[14px]">quiet hour</div>
+            </div>
           </li>
         )}
       </ol>

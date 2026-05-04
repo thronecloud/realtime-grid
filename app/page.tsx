@@ -60,46 +60,44 @@ export default function HomePage() {
   return (
     <main className="flex h-screen flex-col bg-[var(--bg-base)]">
       <Topbar />
-      {/* Mobile-only cooldown row directly below the topbar (the topbar
-          itself hides the desktop cooldown widget at <sm). */}
-      <div className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--bg-base)]/95 px-3 py-1.5 sm:hidden">
+      {/* Mobile-only cooldown row directly below the topbar (topbar itself
+          hides the desktop cooldown widget at <sm). */}
+      <div className="flex items-center justify-between border-b-[1.5px] border-[var(--ink)] bg-[var(--bg-base)] px-3 py-1.5 sm:hidden">
         <CooldownIndicator />
       </div>
-      <div className="flex flex-1 flex-col overflow-hidden md:grid md:grid-cols-[280px_1fr_280px]">
-        <div className="hidden md:block">
+      <div className="flex flex-1 flex-col overflow-hidden md:grid md:grid-cols-[260px_1fr_260px]">
+        <div className="hidden border-r-2 border-[var(--ink)] md:block">
           <RecentFeed />
         </div>
-        <div className="relative flex-1 bg-[var(--bg-void)]">
-          {auth.status === 'ready' && me && (
-            <GridCanvas
-              onCaptureRejected={(reason) => toast(reason)}
-              onJackpot={(mult) => jackpot(mult)}
-            />
-          )}
-          <EmptyWorldOverlay />
-          <HoverTooltip />
-          {/* HUD frame: gold corner brackets + corner labels */}
-          <div className="pointer-events-none absolute inset-0">
-            <span className="absolute left-0 top-0 h-3 w-3 border-t border-l border-[var(--accent-amber)]/70" />
-            <span className="absolute right-0 top-0 h-3 w-3 border-t border-r border-[var(--accent-amber)]/70" />
-            <span className="absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[var(--accent-amber)]/70" />
-            <span className="absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[var(--accent-amber)]/70" />
-            <div className="absolute left-3 top-3 flex items-center gap-2 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
-              <span className="h-1 w-1 animate-pulse bg-[var(--accent-signal)]" />
-              <span>RADAR · LIVE</span>
-            </div>
-            <div className="absolute right-3 top-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
-              GRID 100×100 · 10K CELLS
-            </div>
-            <div className="absolute bottom-3 left-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
-              DRAG · PAN  ·  WHEEL · ZOOM
-            </div>
-            <div className="absolute bottom-3 right-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
-              CLICK · CAPTURE
-            </div>
+        <div className="relative flex-1 bg-[var(--bg-parch)] p-4">
+          {/* Sector header strip */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="caption">▸ SECTOR · A1–B100  ·  zoom 1.0×</span>
+            <span className="caption" style={{ color: 'var(--accent-signal)' }}>● RADAR · LIVE</span>
+          </div>
+          {/* Canvas — wrapped in gold-bracketed ink frame */}
+          <div className="relative h-[calc(100%-3rem)] border-2 border-[var(--ink)] bg-[var(--bg-parch)]">
+            {/* Gold corner brackets (matches Brackets util in tactical.jsx) */}
+            <span className="pointer-events-none absolute -top-[5px] -left-[5px] h-2 w-2 border-t-2 border-l-2 border-[var(--accent-amber)]" />
+            <span className="pointer-events-none absolute -top-[5px] -right-[5px] h-2 w-2 border-t-2 border-r-2 border-[var(--accent-amber)]" />
+            <span className="pointer-events-none absolute -bottom-[5px] -left-[5px] h-2 w-2 border-b-2 border-l-2 border-[var(--accent-amber)]" />
+            <span className="pointer-events-none absolute -bottom-[5px] -right-[5px] h-2 w-2 border-b-2 border-r-2 border-[var(--accent-amber)]" />
+            {auth.status === 'ready' && me && (
+              <GridCanvas
+                onCaptureRejected={(reason) => toast(reason)}
+                onJackpot={(mult) => jackpot(mult)}
+              />
+            )}
+            <EmptyWorldOverlay />
+            <HoverTooltip />
+          </div>
+          {/* Footer strip */}
+          <div className="flex items-center justify-between mt-2">
+            <span className="caption">drag · pan  ·  wheel · zoom</span>
+            <span className="caption">click · capture</span>
           </div>
         </div>
-        <aside className="hidden overflow-y-auto border-l border-[var(--line)] bg-[var(--bg-panel)] md:block">
+        <aside className="hidden overflow-y-auto border-l-2 border-[var(--ink)] bg-[var(--bg-paper)] md:block">
           <Leaderboard />
           <HotStreak />
         </aside>

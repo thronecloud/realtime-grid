@@ -15,7 +15,6 @@ export function CooldownIndicator() {
 
   const remaining = cooldownUntil ? Math.max(0, cooldownUntil - Date.now()) : 0;
   const ready = remaining === 0;
-  // How many segments are "filled" (ready segments) — counts up as time passes.
   const filled = Math.round((1 - remaining / 10_000) * SEGMENTS);
 
   return (
@@ -23,29 +22,29 @@ export function CooldownIndicator() {
       <div className="flex items-baseline gap-1.5">
         <span className="label">{ready ? 'STATUS' : 'COOLDOWN'}</span>
         <span
-          className={`text-[12px] tabular-nums tnum font-semibold ${
-            ready ? 'text-[var(--accent-signal)]' : 'text-[var(--accent-warn)]'
+          className={`hand text-[16px] font-bold tabular-nums tnum ${
+            ready ? 'text-[var(--accent-signal)]' : 'text-[var(--accent)]'
           }`}
         >
           {ready ? 'READY' : `${(remaining / 1000).toFixed(1)}s`}
         </span>
       </div>
-      <div className="flex h-3 items-center gap-[2px]">
+      <div className="flex items-center" style={{ gap: 2 }}>
         {Array.from({ length: SEGMENTS }, (_, i) => {
-          const isFilled = i < filled;
-          const isLast = i === filled - 1 && !ready;
+          const isFilled = ready ? true : i < filled;
+          const isLast = !ready && i === filled - 1;
           return (
             <span
               key={i}
-              className={`h-3 w-1 ${isLast ? 'blink' : ''}`}
+              className={isLast ? 'blink' : ''}
               style={{
+                width: 4,
+                height: 14,
                 background: isFilled
                   ? ready
                     ? 'var(--accent-signal)'
-                    : 'var(--accent-warn)'
-                  : 'var(--line-strong)',
-                boxShadow: isFilled ? '0 0 6px currentColor' : 'none',
-                color: ready ? 'var(--accent-signal)' : 'var(--accent-warn)',
+                    : 'var(--accent)'
+                  : 'rgba(0,0,0,0.12)',
               }}
             />
           );

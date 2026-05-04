@@ -14,40 +14,29 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'me', label: 'ME' },
 ];
 
-// Mobile-only tabbed bottom panel (renders at <md breakpoint via page.tsx).
-// Replaces the 50/50 leaderboard+hot-streak split so all four surfaces are
-// reachable on small screens.
 export function MobileTabs() {
   const [tab, setTab] = useState<Tab>('feed');
   const me = useStore((s) => s.me);
   const tiles = useStore((s) => s.tiles);
-  const myCount = me ? [...tiles.values()].filter((t) => t.owner_id === me.id).length : 0;
-  const myScore = me
-    ? [...tiles.values()].reduce(
-        (acc, t) => (t.owner_id === me.id ? acc + (t.kind === 'mult10' ? 10 : t.kind === 'mult5' ? 5 : 1) : acc),
-        0,
-      )
-    : 0;
-  const myJackpots = me
-    ? [...tiles.values()].filter(
-        (t) => t.owner_id === me.id && (t.kind === 'mult5' || t.kind === 'mult10'),
-      ).length
-    : 0;
+  const myTiles = me ? [...tiles.values()].filter((t) => t.owner_id === me.id) : [];
+  const myScore = myTiles.reduce(
+    (acc, t) => acc + (t.kind === 'mult10' ? 10 : t.kind === 'mult5' ? 5 : 1),
+    0,
+  );
+  const myJackpots = myTiles.filter((t) => t.kind === 'mult5' || t.kind === 'mult10').length;
 
   return (
-    <div className="flex h-48 flex-col border-t border-[var(--line)] bg-[var(--bg-panel)]">
-      <nav className="flex shrink-0 border-b border-[var(--line)] text-[10px] uppercase tracking-[0.2em]">
-        {TABS.map((t) => {
+    <div className="flex h-48 flex-col border-t-2 border-[var(--ink)] bg-[var(--bg-paper)]">
+      <nav className="flex shrink-0 border-b-2 border-[var(--ink)]">
+        {TABS.map((t, i) => {
           const active = t.key === tab;
           return (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex-1 border-r border-[var(--line)] px-3 py-2 last:border-r-0 ${
-                active
-                  ? 'bg-[var(--bg-void)] font-semibold text-[var(--accent-amber)]'
-                  : 'bg-[var(--bg-panel)] text-[var(--fg-muted)]'
-              }`}
+              className={`hand flex-1 px-3 py-2 text-[13px] font-bold tracking-[0.05em] ${
+                i < TABS.length - 1 ? 'border-r border-[var(--ink)]' : ''
+              } ${active ? 'bg-[var(--ink)] text-[var(--bg-paper)]' : 'text-[var(--ink)]'}`}
             >
               {t.label}
             </button>
@@ -70,36 +59,36 @@ export function MobileTabs() {
             <HotStreak />
           </div>
         )}
-        {tab === 'me' && (
-          <div className="h-full p-4 text-[11px]">
-            {me ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <span className="chip h-5 w-5" style={{ background: me.color }} />
-                  <span className="text-[14px] font-semibold text-[var(--fg)]">{me.name}</span>
-                </div>
-                <dl className="grid grid-cols-3 gap-2 border border-[var(--line)] bg-[var(--bg-sunken)] p-3">
-                  <div>
-                    <dt className="label">SCORE</dt>
-                    <dd className="mt-1 font-mono text-[18px] tabular-nums text-[var(--fg)]">{myScore}</dd>
-                  </div>
-                  <div>
-                    <dt className="label">TILES</dt>
-                    <dd className="mt-1 font-mono text-[18px] tabular-nums text-[var(--fg)]">{myCount}</dd>
-                  </div>
-                  <div>
-                    <dt className="label">✦ HITS</dt>
-                    <dd className="mt-1 font-mono text-[18px] tabular-nums text-[var(--accent-amber)]">{myJackpots}</dd>
-                  </div>
-                </dl>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
-                  // tiles auto-expire after 7 days
-                </p>
+        {tab === 'me' && me && (
+          <div className="h-full p-4">
+            <div className="flex items-center gap-3">
+              <span
+                className="h-5 w-5 border-[1.5px] border-[var(--ink)]"
+                style={{ background: me.color }}
+              />
+              <span className="hand text-[18px] font-bold uppercase">{me.name}</span>
+            </div>
+            <dl className="mt-3 grid grid-cols-3 gap-2 border-2 border-[var(--ink)] bg-[var(--bg-warm)] p-3">
+              <div>
+                <dt className="label">SCORE</dt>
+                <dd className="hand mt-1 text-[22px] font-bold tabular-nums tnum">{myScore}</dd>
               </div>
-            ) : (
-              <div className="text-[var(--fg-dim)]">// no operative selected</div>
-            )}
+              <div>
+                <dt className="label">TILES</dt>
+                <dd className="hand mt-1 text-[22px] font-bold tabular-nums tnum">{myTiles.length}</dd>
+              </div>
+              <div>
+                <dt className="label">★ HITS</dt>
+                <dd className="hand mt-1 text-[22px] font-bold tabular-nums tnum text-[var(--accent-amber)]">
+                  {myJackpots}
+                </dd>
+              </div>
+            </dl>
+            <p className="caption mt-3">// tiles auto-expire after 7 days</p>
           </div>
+        )}
+        {tab === 'me' && !me && (
+          <div className="hand p-4 text-[var(--fg-muted)]">// no operative selected</div>
         )}
       </div>
     </div>

@@ -20,10 +20,11 @@ export interface PaintInput {
   reveals: Map<string, { until: number; mult: number }>;
 }
 
-const BG = '#07080a';
-const GRID = '#1c2230';
-const UNCLAIMED = '#21263a';      // brighter so the grid texture is always visible
-const UNCLAIMED_ALT = '#1c2030';  // checker contrast cell — every other column
+// Warm-paper / parchment palette to match tactical.jsx wireframes.
+const BG = '#efe9d8';             // canvas backdrop (parchment)
+const GRID = '#cfc8b3';           // hairline lines on the grid
+const UNCLAIMED = '#efe9d8';      // unclaimed cell color (matches BG)
+const UNCLAIMED_ALT = '#e7e0cb';  // every-other-cell checker, very subtle
 
 // Owner color drawn at 85% alpha so the underlying grid texture peeks
 // through and the canvas reads as a single map, not a quilt of opaque cells.
@@ -115,10 +116,13 @@ export function paint(input: PaintInput) {
     }
   }
 
-  // Hover ring — amber to match accent system
+  // Hover ring — orange-red accent (matches wireframe), ink halo for contrast
   if (hovered) {
     const screen = worldToScreen(camera, hovered.x * TILE_PX, hovered.y * TILE_PX);
-    ctx.strokeStyle = '#f5c245';
+    ctx.strokeStyle = 'rgba(26,26,26,0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(screen.x - 0.5, screen.y - 0.5, cellPx + 1, cellPx + 1);
+    ctx.strokeStyle = '#e8553a';
     ctx.lineWidth = 2;
     ctx.strokeRect(screen.x + 1, screen.y + 1, cellPx - 2, cellPx - 2);
   }

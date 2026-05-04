@@ -19,12 +19,7 @@ export function Leaderboard() {
       }
     }
     return [...score.entries()]
-      .map(([id, n]) => ({
-        id,
-        n,
-        p: players.get(id),
-        jackpots: jackpots.get(id) ?? 0,
-      }))
+      .map(([id, n]) => ({ id, n, p: players.get(id), jackpots: jackpots.get(id) ?? 0 }))
       .sort((a, b) => b.n - a.n)
       .slice(0, 10);
   }, [tiles, players]);
@@ -32,59 +27,66 @@ export function Leaderboard() {
   const max = rows[0]?.n ?? 1;
 
   return (
-    <section className="border-b border-[var(--line)]">
-      <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[var(--accent-amber)] text-[10px]">▸</span>
-          <span className="label">LEADERBOARD</span>
-        </div>
-        <span className="label">TOP 10</span>
+    <section className="border-b-[1.5px] border-[var(--ink)] bg-[var(--bg-paper)]">
+      <div className="flex items-center justify-between border-b-[1.5px] border-[var(--ink)] px-3 py-2">
+        <span className="hand text-[15px] font-bold tracking-[0.1em]">▸ LEADERBOARD</span>
+        <span className="caption">TOP 10</span>
       </div>
-      <ol className="text-[11px]">
-        {rows.map((r, i) => {
-          const pct = (r.n / max) * 100;
-          const isMe = me && r.id === me.id;
-          return (
-            <li
-              key={r.id}
-              className={`group relative flex items-center gap-2 px-3 py-1.5 ${
-                isMe ? 'bg-[var(--accent-amber)]/[0.06]' : ''
-              }`}
-            >
-              <span
-                className="absolute inset-y-0 left-0 -z-10 transition-[width]"
-                style={{
-                  width: `${pct}%`,
-                  background:
-                    i === 0
-                      ? 'linear-gradient(to right, rgba(245,194,69,0.18), rgba(245,194,69,0.02))'
-                      : `linear-gradient(to right, ${r.p?.color ?? '#3a3f4d'}1a, transparent)`,
-                }}
-              />
-              <span className="w-5 text-right text-[10px] tabular-nums tnum text-[var(--fg-dim)]">
-                {String(i + 1).padStart(2, '0')}
-              </span>
-              <span className="chip" style={{ background: r.p?.color ?? '#666' }} />
-              <span className="truncate text-[var(--fg)]">
-                {r.p?.name ?? r.id.slice(0, 6)}
-              </span>
-              {r.jackpots > 0 && (
-                <span className="text-[9px] font-bold text-[var(--accent-amber)]">
-                  ✦{r.jackpots}
-                </span>
-              )}
-              <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums tnum text-[var(--fg)]">
-                {r.n}
-              </span>
-            </li>
-          );
-        })}
-        {rows.length === 0 && (
-          <li className="px-3 py-6 text-center text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
-            // no captures
-          </li>
-        )}
-      </ol>
+      {rows.length === 0 ? (
+        <div className="p-4">
+          <div
+            className="border border-dashed border-[var(--ink)] p-3"
+            style={{ transform: 'rotate(-0.3deg)' }}
+          >
+            <div className="caption">// no captures</div>
+            <div className="hand mt-1 text-[14px]">
+              standings will fill in as the grid fills.
+            </div>
+          </div>
+        </div>
+      ) : (
+        <ol>
+          {rows.map((r, i) => {
+            const pct = (r.n / max) * 100;
+            const isMe = me && r.id === me.id;
+            return (
+              <li key={r.id} className="relative px-3 py-1">
+                <div
+                  className="absolute inset-y-0 left-0 -z-10"
+                  style={{
+                    width: `${pct}%`,
+                    background:
+                      i === 0
+                        ? 'rgba(217, 168, 38, 0.30)'
+                        : isMe
+                          ? 'rgba(232, 85, 58, 0.18)'
+                          : 'rgba(26, 26, 26, 0.07)',
+                  }}
+                />
+                <div className="relative flex items-center gap-2">
+                  <span className="w-[18px] font-mono text-[10px] tabular-nums tnum text-[var(--fg-muted)]">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="chip" style={{ background: r.p?.color ?? '#888' }} />
+                  <span
+                    className={`hand text-[14px] ${i === 0 || isMe ? 'font-bold' : ''}`}
+                  >
+                    {(r.p?.name ?? r.id.slice(0, 6)).toLowerCase()}
+                  </span>
+                  {r.jackpots > 0 && (
+                    <span className="font-mono text-[11px] font-bold text-[var(--accent-amber)]">
+                      ★{r.jackpots}
+                    </span>
+                  )}
+                  <span className="ml-auto font-mono text-[12px] font-semibold tabular-nums tnum">
+                    {r.n}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </section>
   );
 }

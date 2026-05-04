@@ -142,7 +142,7 @@ export function GridCanvas({ onCaptureRejected, onJackpot }: Props) {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 overflow-hidden bg-neutral-950 select-none"
+      className="absolute inset-0 overflow-hidden bg-[var(--bg-parch)] select-none"
     >
       <canvas
         ref={canvasRef}

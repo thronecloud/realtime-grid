@@ -41,64 +41,59 @@ export function RecentFeed() {
   }, [pushFeed]);
 
   return (
-    <aside className="flex h-full w-full flex-col border-r border-[var(--line)] bg-[var(--bg-panel)]">
-      <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[var(--accent-amber)] text-[10px]">▸</span>
-          <span className="label">LIVE FEED</span>
+    <aside className="flex h-full w-full flex-col bg-[var(--bg-paper)]">
+      <div className="flex items-center justify-between border-b-[1.5px] border-[var(--ink)] px-3 py-2">
+        <span className="hand text-[15px] font-bold tracking-[0.1em]">▸ LIVE FEED</span>
+        <span className="caption tabular-nums tnum">
+          {String(feed.length).padStart(2, '0')}
+        </span>
+      </div>
+      {feed.length === 0 ? (
+        <div className="p-4">
+          <div
+            className="border border-dashed border-[var(--ink)] p-4"
+            style={{ transform: 'rotate(-0.3deg)' }}
+          >
+            <div className="caption">// no signal yet</div>
+            <div className="hand mt-1 text-[14px]">be the first to claim a tile.</div>
+          </div>
         </div>
-        <span className="label tnum">{String(feed.length).padStart(2, '0')}</span>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <ul className="divide-y divide-[var(--line)]/50">
-          {feed.map((i) => {
-            const p = players.get(i.playerId);
-            const mult = i.kind === 'mult10' ? 10 : i.kind === 'mult5' ? 5 : 1;
-            const isFresh = mult > 1 && Date.now() - i.ts < 4000;
-            return (
-              <li
-                key={i.key}
-                className={`feed-in group flex items-center gap-2 px-3 py-1.5 text-[11px] ${
-                  isFresh ? 'feed-jackpot' : ''
-                }`}
-              >
-                <span
-                  className="chip"
-                  style={{ background: p?.color ?? '#666' }}
-                />
-                <span className="max-w-[80px] truncate font-medium text-[var(--fg)]">
-                  {p?.name ?? '·····'}
-                </span>
-                <span className="text-[var(--fg-dim)]">→</span>
-                <span className="font-mono text-[10px] text-[var(--fg-muted)] tnum">
-                  {i.tileId.slice(2)}
-                </span>
-                {mult > 1 ? (
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <ul>
+            {feed.map((i) => {
+              const p = players.get(i.playerId);
+              const mult = i.kind === 'mult10' ? 10 : i.kind === 'mult5' ? 5 : 1;
+              const isFresh = mult > 1 && Date.now() - i.ts < 4000;
+              const xy = i.tileId.startsWith('s:') ? i.tileId.slice(2) : i.tileId;
+              return (
+                <li
+                  key={i.key}
+                  className={`feed-in flex items-center gap-2 px-3 py-1 ${isFresh ? 'feed-jackpot' : ''}`}
+                >
+                  <span className="chip" style={{ background: p?.color ?? '#888' }} />
+                  <span className="hand text-[14px] font-semibold">
+                    {(p?.name ?? '·····').toLowerCase()}
+                  </span>
+                  <span className="text-[var(--fg-muted)]">→</span>
                   <span
-                    className={`ml-auto px-1 py-px text-[9px] font-bold tracking-[0.15em] ${
-                      mult === 10
-                        ? 'bg-[var(--accent-amber)]/25 text-[var(--accent-amber)]'
-                        : 'bg-[var(--accent-amber)]/12 text-[var(--accent-amber)]/90'
-                    }`}
+                    className="font-mono text-[11px] tabular-nums tnum text-[var(--fg-muted)]"
                   >
-                    ✦ {mult}×
+                    {xy}
                   </span>
-                ) : (
-                  <span className="ml-auto text-[10px] text-[var(--fg-dim)] tnum">
-                    {fmtAgo(i.ts)}
-                  </span>
-                )}
-              </li>
-            );
-          })}
-          {feed.length === 0 && (
-            <li className="px-3 py-6 text-center text-[10px] tracking-[0.18em] text-[var(--fg-dim)]">
-              <span className="block uppercase">// no signal yet</span>
-              <span className="mt-1 block normal-case text-[var(--fg-muted)]">be the first to claim a tile.</span>
-            </li>
-          )}
-        </ul>
-      </div>
+                  {mult > 1 ? (
+                    <span className="ml-auto hand text-[13px] font-bold text-[var(--accent-amber)]">
+                      ★ {mult}×
+                    </span>
+                  ) : (
+                    <span className="ml-auto caption tabular-nums tnum">{fmtAgo(i.ts)}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </aside>
   );
 }

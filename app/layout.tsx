@@ -1,19 +1,21 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Caveat, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const caveat = Caveat({
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-caveat',
 });
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-mono',
 });
 
 export const metadata: Metadata = {
-  title: 'Realtime Grid',
+  title: 'The Grid · Ops Center',
   description: 'Claim tiles. See others claim in real time.',
 };
 
@@ -21,9 +23,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${caveat.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="bg-neutral-950 text-neutral-100 min-h-full flex flex-col">
+      <body className="bg-[var(--bg-base)] text-[var(--ink)] min-h-full flex flex-col">
         {children}
       </body>
     </html>
