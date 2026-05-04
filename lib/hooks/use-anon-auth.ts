@@ -14,10 +14,19 @@ export function useAnonAuth(): AuthState {
     const sb = getSupabaseBrowser();
     let cancelled = false;
     (async () => {
+      // 1. Read the cached session from localStorage.
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
-        if (!cancelled) setState({ status: 'ready', userId: session.user.id });
-        return;
+        // 2. Verify it against the server. getSession() trusts the JWT
+        // locally; getUser() is a real round-trip and will fail if the
+        // user was deleted (e.g. local Supabase reset, server-side wipe,
+        // expired JWT). On failure, drop the stale session and re-auth.
+        const { data: { user }, error } = await sb.auth.getUser();
+        if (!cancelled && user && !error) {
+          setState({ status: 'ready', userId: user.id });
+          return;
+        }
+        await sb.auth.signOut();
       }
       const { data, error } = await sb.auth.signInAnonymously();
       if (cancelled) return;
