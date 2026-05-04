@@ -1,0 +1,106 @@
+'use client';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { getSupabaseBrowser } from '@/lib/supabase/client';
+import { useStore } from '@/lib/store';
+import { fetchAllTiles, fetchBigTiles } from '@/lib/api/tiles';
+import { ensurePlayers } from '@/lib/api/players';
+import type { TileRow } from '@/lib/types/db';
+
+export interface RealtimeHandle { stop(): void }
+
+// Module-level ref to the subscribed `world` channel. broadcastCapture()
+// reuses this — sb.channel('world') a second time creates a new unsubscribed
+// channel that silently drops .send().
+let worldChannel: RealtimeChannel | null = null;
+
+export async function startRealtime(opts: {
+  me: { id: string; name: string; color: string };
+}): Promise<RealtimeHandle> {
+  const sb = getSupabaseBrowser();
+  const store = useStore.getState();
+
+  const [bigs, tiles] = await Promise.all([fetchBigTiles(), fetchAllTiles()]);
+  store.setBigTiles(bigs);
+  store.setInitialTiles(tiles);
+  await ensurePlayers([...new Set(tiles.map((t) => t.owner_id))]);
+
+  const chA: RealtimeChannel = sb
+    .channel('tiles-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'tiles' },
+      async (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const oldId = (payload.old as Partial<TileRow>).id;
+          if (oldId) {
+            useStore.getState().markFading(oldId, 600);
+            setTimeout(() => {
+              useStore.getState().removeTile(oldId);
+              useStore.getState().clearFading(oldId);
+            }, 600);
+          }
+        } else {
+          const row = payload.new as TileRow;
+          useStore.getState().upsertTile(row);
+          useStore.getState().pushFlash(row.id, 220);
+          await ensurePlayers([row.owner_id]);
+        }
+      },
+    )
+    .subscribe();
+
+  const chB: RealtimeChannel = sb
+    .channel('world', { config: { presence: { key: opts.me.id } } })
+    .on('presence', { event: 'sync' }, () => {
+      const state = chB.presenceState() as Record<
+        string,
+        Array<{ id: string; name: string; color: string }>
+      >;
+      const peers = Object.values(state)
+        .flat()
+        .map((p) => ({ id: p.id, name: p.name, color: p.color }));
+      useStore.getState().setOnline(peers);
+    })
+    .on('broadcast', { event: 'capture' }, (msg) => {
+      const p = msg.payload as { playerId: string; tileId: string; kind: 'small' | 'big' };
+      const ts = Date.now();
+      useStore.getState().pushFeed({
+        key: `${ts}-${p.tileId}`,
+        playerId: p.playerId,
+        tileId: p.tileId,
+        kind: p.kind,
+        ts,
+      });
+      ensurePlayers([p.playerId]);
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await chB.track({ id: opts.me.id, name: opts.me.name, color: opts.me.color });
+      }
+    });
+  worldChannel = chB;
+
+  const onOnline = async () => {
+    const [bigs2, tiles2] = await Promise.all([fetchBigTiles(), fetchAllTiles()]);
+    useStore.getState().setBigTiles(bigs2);
+    useStore.getState().setInitialTiles(tiles2);
+    await ensurePlayers([...new Set(tiles2.map((t) => t.owner_id))]);
+  };
+  window.addEventListener('online', onOnline);
+
+  return {
+    stop: () => {
+      window.removeEventListener('online', onOnline);
+      sb.removeChannel(chA);
+      sb.removeChannel(chB);
+      if (worldChannel === chB) worldChannel = null;
+    },
+  };
+}
+
+export function broadcastCapture(payload: {
+  playerId: string; tileId: string; kind: 'small' | 'big';
+}) {
+  if (!worldChannel) return;
+  worldChannel.send({ type: 'broadcast', event: 'capture', payload });
+}
