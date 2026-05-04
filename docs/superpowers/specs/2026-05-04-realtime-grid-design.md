@@ -199,9 +199,9 @@ Then subscribe to A and B.
 
 **Drawing model.**
 - One on-screen `<canvas>` resize-observed to the viewport.
-- One offscreen buffer with the whole world rendered at the current zoom level. Repainted only when zoom changes or when tiles arrive.
-- Per-frame loop: blit buffer at camera offset, then draw the overlay (hover, selection ring, capture flashes, cursor cooldown ring).
-- Tile state lives in a `Map<tileId, TileRow>` in a Zustand store. Realtime updates mutate the map and mark a dirty rect; the next animation frame re-blits just that region.
+- Per-frame: paint the visible cells (from the in-memory `tiles` Map) directly. Viewport culling keeps the cell count to ~the visible window — at most a few thousand fillRects on a 4k display.
+- A `dirty` flag in the Zustand store gates the rAF loop. State mutators (tile upsert/remove, camera, hover, flash, fade) flip it true; the loop paints, clears it, and skips frames when nothing's pending. Idle = zero CPU.
+- Active animations (capture flash, expiry fade) keep the loop drawing for their duration without needing dirty toggles.
 
 **Camera.**
 - Pan: drag with mouse / two-finger touch.

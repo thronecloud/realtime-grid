@@ -493,6 +493,78 @@ git commit -m "feat(db): pg_cron sweeper for expired tiles"
 
 ---
 
+### Task 9b: Vercel Cron fallback for tile expiry
+
+`pg_cron` is not available on every Supabase tier. This task adds a Vercel Cron route that performs the same delete via the service role key. Both can run safely in parallel — the second sweep is a no-op once the first deletes the row. The README will mention picking one based on the provisioned tier; the route is the always-available path.
+
+**Files:**
+- Create: `app/api/cron/expire/route.ts`, `vercel.ts`
+
+- [ ] **Step 0: Install `@vercel/config`**
+
+```bash
+pnpm add -D @vercel/config
+```
+
+- [ ] **Step 1: Write `app/api/cron/expire/route.ts`**
+
+```ts
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) {
+  // Vercel Cron sets this header on scheduled invocations.
+  const auth = request.headers.get('authorization');
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new NextResponse('unauthorized', { status: 401 });
+  }
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } },
+  );
+  const { error, count } = await sb
+    .from('tiles')
+    .delete({ count: 'exact' })
+    .lt('expires_at', new Date().toISOString());
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, deleted: count ?? 0 });
+}
+```
+
+- [ ] **Step 2: Register the cron in `vercel.ts`**
+
+```ts
+import { type VercelConfig } from '@vercel/config/v1';
+
+export const config: VercelConfig = {
+  framework: 'nextjs',
+  buildCommand: 'next build',
+  installCommand: 'pnpm install --frozen-lockfile',
+  crons: [{ path: '/api/cron/expire', schedule: '* * * * *' }],
+};
+```
+
+- [ ] **Step 3: Generate the cron secret value for local dev**
+
+```bash
+echo "CRON_SECRET=$(openssl rand -hex 32)" >> .env.local
+```
+
+(The same value will be set in Vercel project settings as part of Task 35.)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/cron/expire/ vercel.ts
+git commit -m "feat(cron): vercel cron fallback for tile expiry"
+```
+
+---
+
 ### Task 10: Spin up local Supabase + apply migrations
 
 **Files:** none (verification step)
@@ -541,6 +613,9 @@ Note the values; next task uses them.
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+# Used by /api/cron/expire (Vercel Cron + tests). Generate with:
+#   openssl rand -hex 32
+CRON_SECRET=
 ```
 
 - [ ] **Step 2: Write `.env.local` with values from Task 10 step 4**
@@ -1167,6 +1242,17 @@ export async function fetchPlayersByIds(ids: string[]): Promise<PlayerRow[]> {
   if (error) throw error;
   return data ?? [];
 }
+
+// Hydrate any unknown player rows into the store. Used by realtime + feed +
+// hot-streak to avoid duplicating the same "who don't I know yet?" pattern.
+import { useStore } from '@/lib/store';
+export async function ensurePlayers(ids: string[]): Promise<void> {
+  const have = useStore.getState().players;
+  const missing = [...new Set(ids)].filter(id => id && !have.has(id));
+  if (!missing.length) return;
+  const rows = await fetchPlayersByIds(missing);
+  useStore.getState().setPlayers(rows);
+}
 ```
 
 - [ ] **Step 2: Commit**
@@ -1189,11 +1275,23 @@ git commit -m "feat(api): player fetch/upsert helpers"
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 import type { BigTileRow, CaptureResult, TileRow } from '@/lib/types/db';
 
+// Paginated. PostgREST default limit is 1000 — without explicit ranging,
+// the world silently truncates once >1000 tiles are captured.
 export async function fetchAllTiles(): Promise<TileRow[]> {
   const sb = getSupabaseBrowser();
-  const { data, error } = await sb.from('tiles').select('*');
-  if (error) throw error;
-  return data ?? [];
+  const PAGE = 1000;
+  const out: TileRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb
+      .from('tiles')
+      .select('*')
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
 }
 
 export async function fetchBigTiles(): Promise<BigTileRow[]> {
@@ -1331,6 +1429,51 @@ describe('capture_tile contention', () => {
     expect(r2.ok).toBe(false);
     expect(r2.reason).toBe('cooldown');
   }, 15_000);
+
+  it('rejects small tile id inside a big-tile footprint', async () => {
+    const a = await newPlayer('foot-' + Date.now());
+    // Find a big-tile anchor and target a cell inside its 5x5 footprint.
+    const sb = createClient(URL, ANON, { auth: { persistSession: false } });
+    const { data: anchors } = await sb.from('big_tiles').select('*').limit(1);
+    expect(anchors?.length).toBe(1);
+    const anchor = anchors![0];
+    const inside = `s:${anchor.x + 2},${anchor.y + 2}`;
+    const r = await rpc(a, inside);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('invalid_tile');
+  }, 15_000);
+
+  it('rejects big-tile id at a non-anchor position', async () => {
+    const a = await newPlayer('anchor-' + Date.now());
+    // (0,0) won't be an anchor (random seed; vanishingly unlikely; guard anyway).
+    const sb = createClient(URL, ANON, { auth: { persistSession: false } });
+    const { data: any00 } = await sb.from('big_tiles').select('*').eq('x', 0).eq('y', 0);
+    if (any00 && any00.length > 0) return; // skip if seed hit (0,0)
+    const r = await rpc(a, 'b:0,0');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('invalid_tile');
+  }, 15_000);
+
+  it('re-captures an expired tile cleanly', async () => {
+    const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    if (!SERVICE) throw new Error('Set SUPABASE_SERVICE_ROLE_KEY for this test');
+    const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+    const a = await newPlayer('exp-' + Date.now());
+    const tileId = `s:60,60`;
+    const r1 = await rpc(a, tileId);
+    expect(r1.ok).toBe(true);
+    // age the row past expiry + clear cooldown
+    await admin.from('tiles').update({
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    }).eq('id', tileId);
+    const userId = (await a.auth.getUser()).data.user!.id;
+    await admin.from('players').update({
+      last_capture_at: new Date(Date.now() - 11_000).toISOString(),
+    }).eq('id', userId);
+    const r2 = await rpc(a, tileId);
+    expect(r2.ok).toBe(true);
+    expect(r2.tile?.owner_id).toBe(userId);
+  }, 15_000);
 });
 ```
 
@@ -1392,8 +1535,15 @@ import type { Camera } from '@/lib/grid/camera';
 import { buildBigTileIndex, type BigTileIndex } from '@/lib/grid/big-tiles';
 
 export interface PresencePeer { id: string; name: string; color: string }
-
 export interface FlashEntry { tileId: string; until: number }
+export interface FadeEntry { startedAt: number; durationMs: number }
+export interface FeedItem {
+  key: string;            // unique per row (e.g. `${ts}-${tileId}`)
+  playerId: string;
+  tileId: string;
+  kind: 'small' | 'big';
+  ts: number;
+}
 
 interface State {
   // identity
@@ -1402,16 +1552,23 @@ interface State {
 
   // world
   bigIndex: BigTileIndex;
-  tiles: Map<string, TileRow>;        // tileId -> row
-  players: Map<string, PlayerRow>;    // playerId -> row
+  tiles: Map<string, TileRow>;
+  players: Map<string, PlayerRow>;
 
   // realtime
   online: PresencePeer[];
+  feed: FeedItem[];                  // newest first; max 50
 
   // ui
   camera: Camera;
-  cooldownUntil: number | null;       // Date.now() ms when cooldown ends
-  flashes: FlashEntry[];              // recent capture flashes
+  cooldownUntil: number | null;
+  flashes: FlashEntry[];
+  fadingOut: Map<string, FadeEntry>;
+  hoverScreen: { x: number; y: number } | null;
+  hoverCell: { x: number; y: number } | null;
+
+  // render gate
+  dirty: boolean;
 
   // mutators
   setIdentity(userId: string, me: PlayerRow | null): void;
@@ -1421,11 +1578,21 @@ interface State {
   removeTile(tileId: string): void;
   setPlayers(rows: PlayerRow[]): void;
   setOnline(peers: PresencePeer[]): void;
+  pushFeed(item: FeedItem): void;
   setCamera(c: Camera): void;
   startCooldown(seconds: number): void;
   pushFlash(tileId: string, ms: number): void;
+  markFading(tileId: string, durationMs: number): void;
+  clearFading(tileId: string): void;
+  setHover(screen: { x: number; y: number } | null, cell: { x: number; y: number } | null): void;
+  clearDirty(): void;
 }
 
+const FEED_MAX = 50;
+
+// Every state mutation that affects what's painted flips `dirty` to true.
+// The rAF loop in grid-canvas.tsx checks `dirty` (and active animations) and
+// skips painting otherwise — idle CPU stays at zero.
 export const useStore = create<State>((set) => ({
   userId: null,
   me: null,
@@ -1433,34 +1600,55 @@ export const useStore = create<State>((set) => ({
   tiles: new Map(),
   players: new Map(),
   online: [],
+  feed: [],
   camera: { zoom: 1, x: 0, y: 0 },
   cooldownUntil: null,
   flashes: [],
+  fadingOut: new Map(),
+  hoverScreen: null,
+  hoverCell: null,
+  dirty: true,
 
-  setIdentity: (userId, me) => set({ userId, me }),
-  setBigTiles: (rows) => set({ bigIndex: buildBigTileIndex(rows) }),
-  setInitialTiles: (rows) => set({ tiles: new Map(rows.map(r => [r.id, r])) }),
+  setIdentity: (userId, me) => set({ userId, me, dirty: true }),
+  setBigTiles: (rows) => set({ bigIndex: buildBigTileIndex(rows), dirty: true }),
+  setInitialTiles: (rows) => set({ tiles: new Map(rows.map(r => [r.id, r])), dirty: true }),
   upsertTile: (row) => set(s => {
     const next = new Map(s.tiles);
     next.set(row.id, row);
-    return { tiles: next };
+    return { tiles: next, dirty: true };
   }),
   removeTile: (tileId) => set(s => {
     const next = new Map(s.tiles);
     next.delete(tileId);
-    return { tiles: next };
+    return { tiles: next, dirty: true };
   }),
   setPlayers: (rows) => set(s => {
     const next = new Map(s.players);
     for (const r of rows) next.set(r.id, r);
-    return { players: next };
+    return { players: next, dirty: true };
   }),
   setOnline: (peers) => set({ online: peers }),
-  setCamera: (camera) => set({ camera }),
+  pushFeed: (item) => set(s => ({
+    feed: [item, ...s.feed.filter(f => f.key !== item.key)].slice(0, FEED_MAX),
+  })),
+  setCamera: (camera) => set({ camera, dirty: true }),
   startCooldown: (seconds) => set({ cooldownUntil: Date.now() + seconds * 1000 }),
   pushFlash: (tileId, ms) => set(s => ({
     flashes: [...s.flashes.filter(f => f.until > Date.now()), { tileId, until: Date.now() + ms }],
+    dirty: true,
   })),
+  markFading: (tileId, durationMs) => set(s => {
+    const next = new Map(s.fadingOut);
+    next.set(tileId, { startedAt: Date.now(), durationMs });
+    return { fadingOut: next, dirty: true };
+  }),
+  clearFading: (tileId) => set(s => {
+    const next = new Map(s.fadingOut);
+    next.delete(tileId);
+    return { fadingOut: next, dirty: true };
+  }),
+  setHover: (hoverScreen, hoverCell) => set({ hoverScreen, hoverCell, dirty: true }),
+  clearDirty: () => set({ dirty: false }),
 }));
 ```
 
@@ -1492,16 +1680,18 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 import { useStore } from '@/lib/store';
 import { fetchAllTiles, fetchBigTiles } from '@/lib/api/tiles';
-import { fetchPlayersByIds } from '@/lib/api/players';
+import { ensurePlayers } from '@/lib/api/players';
 import type { TileRow } from '@/lib/types/db';
 
-export interface RealtimeHandle {
-  stop(): void;
-}
+export interface RealtimeHandle { stop(): void }
+
+// Module-level ref to the subscribed `world` channel. broadcastCapture()
+// reuses this — sb.channel('world') a second time creates a NEW unsubscribed
+// channel that silently drops .send().
+let worldChannel: RealtimeChannel | null = null;
 
 export async function startRealtime(opts: {
   me: { id: string; name: string; color: string };
-  onCaptureBroadcast?: (msg: { playerId: string; tileId: string; kind: 'small'|'big' }) => void;
 }): Promise<RealtimeHandle> {
   const sb = getSupabaseBrowser();
   const store = useStore.getState();
@@ -1510,35 +1700,34 @@ export async function startRealtime(opts: {
   const [bigs, tiles] = await Promise.all([fetchBigTiles(), fetchAllTiles()]);
   store.setBigTiles(bigs);
   store.setInitialTiles(tiles);
-  const ownerIds = [...new Set(tiles.map(t => t.owner_id))];
-  if (ownerIds.length) {
-    const players = await fetchPlayersByIds(ownerIds);
-    store.setPlayers(players);
-  }
+  await ensurePlayers([...new Set(tiles.map(t => t.owner_id))]);
 
-  // 2. Channel A — Postgres Changes on tiles
+  // 2. Channel A — Postgres Changes on tiles (authoritative state)
   const chA: RealtimeChannel = sb
     .channel('tiles-changes')
     .on('postgres_changes',
         { event: '*', schema: 'public', table: 'tiles' },
         async (payload) => {
           if (payload.eventType === 'DELETE') {
+            // Run the fade-out animation, then remove after the duration.
             const oldId = (payload.old as Partial<TileRow>).id;
-            if (oldId) useStore.getState().removeTile(oldId);
+            if (oldId) {
+              useStore.getState().markFading(oldId, 600);
+              setTimeout(() => {
+                useStore.getState().removeTile(oldId);
+                useStore.getState().clearFading(oldId);
+              }, 600);
+            }
           } else {
             const row = payload.new as TileRow;
             useStore.getState().upsertTile(row);
             useStore.getState().pushFlash(row.id, 220);
-            // hydrate player if unknown
-            if (!useStore.getState().players.get(row.owner_id)) {
-              const players = await fetchPlayersByIds([row.owner_id]);
-              useStore.getState().setPlayers(players);
-            }
+            await ensurePlayers([row.owner_id]);
           }
         })
     .subscribe();
 
-  // 3. Channel B — presence + capture broadcast
+  // 3. Channel B — presence + capture broadcast (ephemeral UX)
   const chB: RealtimeChannel = sb
     .channel('world', { config: { presence: { key: opts.me.id } } })
     .on('presence', { event: 'sync' }, () => {
@@ -1547,20 +1736,31 @@ export async function startRealtime(opts: {
       useStore.getState().setOnline(peers);
     })
     .on('broadcast', { event: 'capture' }, (msg) => {
-      const payload = msg.payload as { playerId: string; tileId: string; kind: 'small'|'big' };
-      opts.onCaptureBroadcast?.(payload);
+      const p = msg.payload as { playerId: string; tileId: string; kind: 'small'|'big' };
+      const ts = Date.now();
+      useStore.getState().pushFeed({
+        key: `${ts}-${p.tileId}`,
+        playerId: p.playerId,
+        tileId: p.tileId,
+        kind: p.kind,
+        ts,
+      });
+      // Make sure we have the player record for the feed to render names/colors.
+      ensurePlayers([p.playerId]);
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await chB.track({ id: opts.me.id, name: opts.me.name, color: opts.me.color });
       }
     });
+  worldChannel = chB;
 
-  // 4. reconnect: refetch full snapshot once, on each reconnection
+  // 4. Reconnect: refetch full snapshot once on each reconnection.
   const onOnline = async () => {
     const [bigs2, tiles2] = await Promise.all([fetchBigTiles(), fetchAllTiles()]);
     useStore.getState().setBigTiles(bigs2);
     useStore.getState().setInitialTiles(tiles2);
+    await ensurePlayers([...new Set(tiles2.map(t => t.owner_id))]);
   };
   window.addEventListener('online', onOnline);
 
@@ -1569,14 +1769,14 @@ export async function startRealtime(opts: {
       window.removeEventListener('online', onOnline);
       sb.removeChannel(chA);
       sb.removeChannel(chB);
+      if (worldChannel === chB) worldChannel = null;
     },
   };
 }
 
 export function broadcastCapture(payload: { playerId: string; tileId: string; kind: 'small'|'big' }) {
-  const sb = getSupabaseBrowser();
-  const ch = sb.channel('world');
-  ch.send({ type: 'broadcast', event: 'capture', payload });
+  if (!worldChannel) return; // not yet subscribed; safe no-op
+  worldChannel.send({ type: 'broadcast', event: 'capture', payload });
 }
 ```
 
@@ -1625,6 +1825,7 @@ export interface PaintInput {
   tiles: Map<string, TileRow>;
   players: Map<string, PlayerRow>;
   flashes: Map<string, number>; // tileId -> until ms
+  fadingOut: Map<string, { startedAt: number; durationMs: number }>;
   hovered: { x: number; y: number } | null;
 }
 
@@ -1634,7 +1835,7 @@ const UNCLAIMED = '#1e1f25';
 const BIG_BORDER = 'rgba(255, 215, 0, 0.55)';
 
 export function paint(input: PaintInput) {
-  const { ctx, camera, viewport, bigIndex, tiles, players, flashes, hovered } = input;
+  const { ctx, camera, viewport, bigIndex, tiles, players, flashes, fadingOut, hovered } = input;
   ctx.save();
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, viewport.w, viewport.h);
@@ -1664,6 +1865,13 @@ export function paint(input: PaintInput) {
         ctx.fillStyle = `rgba(255,255,255,${0.55 * a})`;
         ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
       }
+      // expiry fade overlay (paint UNCLAIMED on top with rising alpha)
+      const fade = fadingOut.get(id);
+      if (fade) {
+        const t2 = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
+        ctx.fillStyle = `rgba(30,31,37,${t2})`;
+        ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
+      }
     }
   }
 
@@ -1683,6 +1891,12 @@ export function paint(input: PaintInput) {
     if (f && f > Date.now()) {
       const a2 = (f - Date.now()) / 220;
       ctx.fillStyle = `rgba(255,255,255,${0.55 * a2})`;
+      ctx.fillRect(screen.x, screen.y, size, size);
+    }
+    const fade = fadingOut.get(id);
+    if (fade) {
+      const t2 = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
+      ctx.fillStyle = `rgba(38,33,26,${t2})`;
       ctx.fillRect(screen.x, screen.y, size, size);
     }
   }
@@ -1757,7 +1971,6 @@ export function GridCanvas({ onCaptureRejected }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef<{ x: number; y: number; moved: number; startedAt: number } | null>(null);
-  const hoverRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -1777,18 +1990,26 @@ export function GridCanvas({ onCaptureRejected }: Props) {
 
     const loop = () => {
       const s = useStore.getState();
-      const rect = containerRef.current!.getBoundingClientRect();
-      const flashMap = new Map(s.flashes.map(f => [f.tileId, f.until]));
-      paint({
-        ctx,
-        camera: s.camera,
-        viewport: { w: rect.width, h: rect.height },
-        bigIndex: s.bigIndex,
-        tiles: s.tiles,
-        players: s.players,
-        flashes: flashMap,
-        hovered: hoverRef.current,
-      });
+      const now = Date.now();
+      const hasActiveFlash = s.flashes.some(f => f.until > now);
+      const hasActiveFade = s.fadingOut.size > 0;
+      // Skip the frame entirely when nothing's pending. Idle = 0% CPU.
+      if (s.dirty || hasActiveFlash || hasActiveFade) {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const flashMap = new Map(s.flashes.map(f => [f.tileId, f.until]));
+        paint({
+          ctx,
+          camera: s.camera,
+          viewport: { w: rect.width, h: rect.height },
+          bigIndex: s.bigIndex,
+          tiles: s.tiles,
+          players: s.players,
+          flashes: flashMap,
+          fadingOut: s.fadingOut,
+          hovered: s.hoverCell,
+        });
+        if (s.dirty) useStore.getState().clearDirty();
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -1817,8 +2038,6 @@ export function GridCanvas({ onCaptureRejected }: Props) {
     }
     const big = bigTileAt(s.bigIndex, cellX, cellY);
     const tileId = big ? `b:${big.x},${big.y}` : `s:${cellX},${cellY}`;
-    // optimistic
-    const myColor = s.me?.color ?? '#888';
     const optimistic = {
       id: tileId,
       kind: big ? 'big' as const : 'small' as const,
@@ -1834,9 +2053,18 @@ export function GridCanvas({ onCaptureRejected }: Props) {
 
     const res = await captureTile(tileId).catch((e) => ({ ok: false, reason: 'network', tile: null, error: e }));
     if (!res.ok) {
-      // revert
+      // Compare-before-revert: while the RPC was in flight, another user may
+      // have legitimately captured this tile and Channel A may have pushed
+      // their row in. Only revert if our optimistic write is still the
+      // current state — otherwise leave the legitimate update alone.
       const after = useStore.getState();
-      if (prev) after.upsertTile(prev); else after.removeTile(tileId);
+      const current = after.tiles.get(tileId);
+      const stillMine = current
+        && current.owner_id === optimistic.owner_id
+        && current.captured_at === optimistic.captured_at;
+      if (stillMine) {
+        if (prev) after.upsertTile(prev); else after.removeTile(tileId);
+      }
       onCaptureRejected?.(res.reason ?? 'unknown');
       return;
     }
@@ -1859,7 +2087,10 @@ export function GridCanvas({ onCaptureRejected }: Props) {
         }}
         onMouseMove={(e) => {
           const cell = clientToCell(e);
-          hoverRef.current = cell ? { x: cell.x, y: cell.y } : null;
+          useStore.getState().setHover(
+            cell ? { x: cell.sx, y: cell.sy } : null,
+            cell ? { x: cell.x, y: cell.y } : null,
+          );
           const d = draggingRef.current;
           if (!d) return;
           const dx = e.clientX - d.x;
@@ -1881,7 +2112,10 @@ export function GridCanvas({ onCaptureRejected }: Props) {
             if (cell) await handleClick(cell.x, cell.y);
           }
         }}
-        onMouseLeave={() => { draggingRef.current = null; hoverRef.current = null; }}
+        onMouseLeave={() => {
+          draggingRef.current = null;
+          useStore.getState().setHover(null, null);
+        }}
         onWheel={(e) => {
           e.preventDefault();
           const rect = canvasRef.current!.getBoundingClientRect();
@@ -2109,84 +2343,58 @@ git commit -m "feat(ui): topbar + presence pill"
 
 ```tsx
 'use client';
-import { useEffect, useState } from 'react';
-import { useStore } from '@/lib/store';
+import { useEffect } from 'react';
+import { useStore, type FeedItem } from '@/lib/store';
 import { fetchRecentCaptures } from '@/lib/api/captures';
-import { fetchPlayersByIds } from '@/lib/api/players';
+import { ensurePlayers } from '@/lib/api/players';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-interface FeedItem {
-  id: string;
-  playerName: string;
-  playerColor: string;
-  tileId: string;
-  kind: 'small'|'big';
-  ts: number;
-}
-
-const MAX = 50;
-
+// Reads from store.feed only. Channel B's broadcast handler in lib/realtime.ts
+// is the single producer — no double-paths, no `flashes` plumbing leak, no
+// React re-derivation of state that already exists upstream.
 export function RecentFeed() {
+  const feed = useStore(s => s.feed);
   const players = useStore(s => s.players);
-  const [items, setItems] = useState<FeedItem[]>([]);
+  const pushFeed = useStore(s => s.pushFeed);
 
+  // Hydrate the feed once on mount with the most recent persisted captures.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const rows = await fetchRecentCaptures(MAX);
-      const ids = [...new Set(rows.map(r => r.player_id))];
-      if (ids.length) {
-        const ps = await fetchPlayersByIds(ids);
-        useStore.getState().setPlayers(ps);
-      }
+      const rows = await fetchRecentCaptures(50);
+      await ensurePlayers([...new Set(rows.map(r => r.player_id))]);
       if (cancelled) return;
-      setItems(rows.map(r => ({
-        id: String(r.id),
-        playerName: useStore.getState().players.get(r.player_id)?.name ?? '…',
-        playerColor: useStore.getState().players.get(r.player_id)?.color ?? '#888',
-        tileId: r.tile_id,
-        kind: r.kind,
-        ts: new Date(r.captured_at).getTime(),
-      })));
+      for (const r of rows.reverse()) {
+        pushFeed({
+          key: `${new Date(r.captured_at).getTime()}-${r.tile_id}`,
+          playerId: r.player_id,
+          tileId: r.tile_id,
+          kind: r.kind,
+          ts: new Date(r.captured_at).getTime(),
+        });
+      }
     })();
     return () => { cancelled = true; };
-  }, []);
-
-  // append from broadcast: a tile upsert pushes a flash; we mirror it here.
-  useEffect(() => {
-    const unsub = useStore.subscribe((s, prev) => {
-      if (s.flashes.length === prev.flashes.length) return;
-      const newest = s.flashes[s.flashes.length - 1];
-      if (!newest) return;
-      const t = s.tiles.get(newest.tileId);
-      if (!t) return;
-      const p = s.players.get(t.owner_id);
-      setItems((cur) => [{
-        id: `f-${newest.tileId}-${newest.until}`,
-        playerName: p?.name ?? '…',
-        playerColor: p?.color ?? '#888',
-        tileId: t.id,
-        kind: t.kind,
-        ts: Date.now(),
-      }, ...cur].slice(0, MAX));
-    });
-    return unsub;
-  }, []);
+  }, [pushFeed]);
 
   return (
     <aside className="flex h-full w-full flex-col border-r border-neutral-900 bg-neutral-950">
       <h2 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">Recent captures</h2>
       <ScrollArea className="flex-1 px-3 pb-3">
         <ul className="space-y-1 text-sm">
-          {items.map(i => (
-            <li key={i.id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-neutral-900">
-              <span className="h-2 w-2 rounded-full" style={{ background: i.playerColor }} />
-              <span className="font-medium">{i.playerName}</span>
-              <span className="text-neutral-400">claimed</span>
-              <span className="font-mono text-xs text-neutral-300">{i.tileId}</span>
-              {i.kind === 'big' && <span className="ml-auto rounded bg-amber-500/20 px-1.5 text-[10px] text-amber-300">big</span>}
-            </li>
-          ))}
+          {feed.map((i: FeedItem) => {
+            const p = players.get(i.playerId);
+            return (
+              <li key={i.key} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-neutral-900">
+                <span className="h-2 w-2 rounded-full" style={{ background: p?.color ?? '#888' }} />
+                <span className="font-medium">{p?.name ?? '…'}</span>
+                <span className="text-neutral-400">claimed</span>
+                <span className="font-mono text-xs text-neutral-300">{i.tileId}</span>
+                {i.kind === 'big' && <span className="ml-auto rounded bg-amber-500/20 px-1.5 text-[10px] text-amber-300">big</span>}
+              </li>
+            );
+          })}
+          {feed.length === 0 && <li className="text-neutral-500">No captures yet</li>}
         </ul>
       </ScrollArea>
     </aside>
@@ -2339,11 +2547,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 ```tsx
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { useAnonAuth } from '@/lib/hooks/use-anon-auth';
 import { fetchMyPlayer, upsertMyPlayer } from '@/lib/api/players';
-import { startRealtime } from '@/lib/realtime';
+import { startRealtime, type RealtimeHandle } from '@/lib/realtime';
 import { Topbar } from './_components/topbar';
 import { RecentFeed } from './_components/recent-feed';
 import { Leaderboard } from './_components/leaderboard';
@@ -2358,10 +2566,18 @@ export default function HomePage() {
   const setIdentity = useStore(s => s.setIdentity);
   const [pickerOpen, setPickerOpen] = useState(false);
   const { toast } = useToast();
+  // Single source of truth for the realtime subscription. Both code paths
+  // (existing player and identity-picker submit) write into this ref so
+  // unmount/HMR cleans up exactly one channel set.
+  const rtRef = useRef<RealtimeHandle | null>(null);
+
+  async function ensureRealtime(player: { id: string; name: string; color: string }) {
+    rtRef.current?.stop();
+    rtRef.current = await startRealtime({ me: player });
+  }
 
   useEffect(() => {
     if (auth.status !== 'ready') return;
-    let stop: (() => void) | undefined;
     (async () => {
       const player = await fetchMyPlayer(auth.userId);
       setIdentity(auth.userId, player);
@@ -2369,10 +2585,12 @@ export default function HomePage() {
         setPickerOpen(true);
         return;
       }
-      const handle = await startRealtime({ me: { id: player.id, name: player.name, color: player.color } });
-      stop = handle.stop;
+      await ensureRealtime(player);
     })();
-    return () => { stop?.(); };
+    return () => {
+      rtRef.current?.stop();
+      rtRef.current = null;
+    };
   }, [auth, setIdentity]);
 
   async function onPickIdentity(name: string, color: string) {
@@ -2380,9 +2598,7 @@ export default function HomePage() {
     const player = await upsertMyPlayer({ id: auth.userId, name, color });
     setIdentity(auth.userId, player);
     setPickerOpen(false);
-    const handle = await startRealtime({ me: { id: player.id, name: player.name, color: player.color } });
-    // store handle on window for cleanup on unload
-    (window as any).__rt = handle;
+    await ensureRealtime(player);
   }
 
   return (
@@ -2453,90 +2669,26 @@ git commit -m "feat(ui): wire page composition + identity flow"
 
 ## Phase 8 — Polish
 
-### Task 31: Expiry fade animation
+### Task 31: Verify expiry fade animation
 
-**Files:**
-- Modify: `lib/store.ts` (add fading-out tiles map), `lib/grid/renderer.ts` (paint fade overlay)
+The store (`fadingOut`, `markFading`, `clearFading`), the realtime DELETE handler (markFading + setTimeout to remove), the renderer (`fadingOut` overlay in `PaintInput`), and the canvas (passing `fadingOut: s.fadingOut` into `paint`) were all wired up in Tasks 21–24. This task is verification only.
 
-- [ ] **Step 1: Modify `lib/store.ts` — add fading map + helper**
-
-After the `flashes` field, add:
-
-```ts
-fadingOut: new Map<string, { startedAt: number; durationMs: number }>(),
-```
-
-Update the `State` type accordingly. Add mutators:
-
-```ts
-markFading(tileId: string, durationMs: number): void;
-clearFading(tileId: string): void;
-```
-
-Implement:
-
-```ts
-markFading: (tileId, durationMs) => set(s => {
-  const next = new Map(s.fadingOut);
-  next.set(tileId, { startedAt: Date.now(), durationMs });
-  return { fadingOut: next };
-}),
-clearFading: (tileId) => set(s => {
-  const next = new Map(s.fadingOut);
-  next.delete(tileId);
-  return { fadingOut: next };
-}),
-```
-
-- [ ] **Step 2: In `lib/realtime.ts`, on DELETE call `markFading` instead of straight `removeTile`**
-
-Replace the DELETE branch with:
-
-```ts
-if (payload.eventType === 'DELETE') {
-  const oldId = (payload.old as Partial<TileRow>).id;
-  if (oldId) {
-    useStore.getState().markFading(oldId, 600);
-    setTimeout(() => {
-      useStore.getState().removeTile(oldId);
-      useStore.getState().clearFading(oldId);
-    }, 600);
-  }
-}
-```
-
-- [ ] **Step 3: Modify `lib/grid/renderer.ts` to fade based on `fadingOut`**
-
-Add to `PaintInput`: `fadingOut: Map<string, { startedAt: number; durationMs: number }>`.
-
-After painting the tile color (small + big branches), add an overlay that fades the *previous* color to the unclaimed background:
-
-```ts
-const fade = input.fadingOut.get(id);
-if (fade) {
-  const t = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
-  ctx.fillStyle = `rgba(30,31,37,${t})`;            // UNCLAIMED with rising alpha
-  ctx.fillRect(screen.x, screen.y, cellPx, cellPx); // or `size, size` for big
-}
-```
-
-- [ ] **Step 4: Update `app/_components/grid-canvas.tsx` to pass `fadingOut`**
-
-In the `paint(...)` call inside the loop, add `fadingOut: s.fadingOut`.
-
-- [ ] **Step 5: Type-check + dev verify**
+- [ ] **Step 1: Type-check**
 
 ```bash
-pnpm tsc --noEmit && pnpm dev &
-sleep 5; kill %1
+pnpm tsc --noEmit
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 2: Manual verify**
+
+With the local Supabase running and the dev server up, capture a tile in the browser, then in a separate terminal age it past expiry and confirm the cleanup cron deletes it within ~60 seconds:
 
 ```bash
-git add lib/store.ts lib/realtime.ts lib/grid/renderer.ts app/_components/grid-canvas.tsx
-git commit -m "feat(ui): expiry fade animation"
+pnpm supabase db query "update public.tiles set expires_at = now() - interval '1 minute' where id = 's:50,50'"
+# wait up to 60s, watch tile fade out in the browser
 ```
+
+Expected: tile fades from owner color to unclaimed over ~600ms, then disappears.
 
 ---
 
@@ -2544,30 +2696,11 @@ git commit -m "feat(ui): expiry fade animation"
 
 **Files:**
 - Create: `app/_components/hover-tooltip.tsx`
-- Modify: `app/_components/grid-canvas.tsx` (track screen pos of hover), `app/page.tsx` (mount tooltip)
+- Modify: `app/page.tsx` (mount tooltip)
 
-- [ ] **Step 1: Add hover screen position to store**
+Hover state (`hoverScreen`, `hoverCell`, `setHover`) is in the store from Task 21. The canvas already calls `setHover` from `onMouseMove`/`onMouseLeave` (Task 24). This task wires the tooltip component.
 
-In `lib/store.ts`, add:
-
-```ts
-hoverScreen: null as { x: number; y: number } | null,
-hoverCell: null as { x: number; y: number } | null,
-setHover(screen: { x: number; y: number } | null, cell: { x: number; y: number } | null): void;
-```
-
-```ts
-setHover: (hoverScreen, hoverCell) => set({ hoverScreen, hoverCell }),
-```
-
-- [ ] **Step 2: Update `grid-canvas.tsx` onMouseMove + onMouseLeave to call `setHover`**
-
-```ts
-useStore.getState().setHover({ x: cell.sx, y: cell.sy }, { x: cell.x, y: cell.y });
-// onMouseLeave -> useStore.getState().setHover(null, null);
-```
-
-- [ ] **Step 3: Write `app/_components/hover-tooltip.tsx`**
+- [ ] **Step 1: Write `app/_components/hover-tooltip.tsx`**
 
 ```tsx
 'use client';
@@ -2619,7 +2752,15 @@ export function HoverTooltip() {
 }
 ```
 
-- [ ] **Step 4: Mount in page (inside the canvas column)**
+- [ ] **Step 2: Mount inside the canvas column in `app/page.tsx`**
+
+Add the import:
+
+```tsx
+import { HoverTooltip } from './_components/hover-tooltip';
+```
+
+Update the canvas column JSX:
 
 ```tsx
 <div className="relative">
@@ -2628,10 +2769,10 @@ export function HoverTooltip() {
 </div>
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add lib/store.ts app/_components/grid-canvas.tsx app/_components/hover-tooltip.tsx app/page.tsx
+git add app/_components/hover-tooltip.tsx app/page.tsx
 git commit -m "feat(ui): hover tooltip"
 ```
 
@@ -2687,38 +2828,6 @@ git commit -m "feat(ui): mobile bottom-sheet layout"
 
 ## Phase 9 — Deployment
 
-### Task 34: vercel.ts
-
-**Files:**
-- Create: `vercel.ts`
-
-- [ ] **Step 1: Install config package**
-
-```bash
-pnpm add -D @vercel/config
-```
-
-- [ ] **Step 2: Write `vercel.ts`**
-
-```ts
-import { type VercelConfig } from '@vercel/config/v1';
-
-export const config: VercelConfig = {
-  framework: 'nextjs',
-  buildCommand: 'next build',
-  installCommand: 'pnpm install --frozen-lockfile',
-};
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add vercel.ts package.json
-git commit -m "chore: vercel.ts config"
-```
-
----
-
 ### Task 35: Provision Supabase + Vercel
 
 **Files:** none (control-plane)
@@ -2738,6 +2847,14 @@ pnpm dlx vercel@latest link --yes --repo
 - [ ] **Step 3: Provision a Supabase project via the Marketplace integration**
 
 Open https://vercel.com/integrations/supabase and add it to the project. Confirm env vars are auto-populated under Project → Settings → Environment Variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`).
+
+- [ ] **Step 3b: Add `CRON_SECRET` to Vercel**
+
+```bash
+pnpm dlx vercel@latest env add CRON_SECRET production
+# paste the same hex value used locally in .env.local
+pnpm dlx vercel@latest env add CRON_SECRET preview
+```
 
 - [ ] **Step 4: Push migrations to the cloud project**
 
@@ -2886,18 +3003,32 @@ git push origin main
 | Goals & non-goals | covered by overall plan (no task) |
 | Architecture diagram | T16-T19 (clients), T22 (realtime), T7 (RPC) |
 | Data model | T6 (schema) |
-| Capture RPC + conflict resolution | T7 (RPC), T20 (test) |
-| Real-time strategy | T22 |
-| Renderer & UI | T23, T24, T31, T32 |
+| Capture RPC + conflict resolution | T7 (RPC), T20 (5 tests: contention, cooldown, footprint reject, anchor reject, expiry re-capture) |
+| Real-time strategy | T22 (two-channel; module-ref world channel; ensurePlayers hydration) |
+| Renderer & UI | T23 (paint w/ flash + fade), T24 (canvas, dirty-flag rAF skip, compare-before-revert), T31 (verify), T32 (tooltip) |
 | Identity | T17, T18, T25 |
-| Bonus features | T26 (cooldown), T27 (presence), T28 (feed), T29 (leaderboard + hot streak), T31 (fade), T32 (tooltip), T33 (mobile) |
+| Bonus features | T26 (cooldown), T27 (presence), T28 (feed via store), T29 (leaderboard + hot streak), T31 (fade), T32 (tooltip), T33 (mobile) |
 | Project structure | T1-T4 |
-| Testing | T12-T15 (helpers), T20 (integration) |
-| Deployment | T34, T35 |
+| Testing | T12-T15 (helpers), T20 (integration: 5 tests) |
+| Tile expiry | T9 (pg_cron, optional), T9b (Vercel Cron route, always-available) |
+| Deployment | T35 |
 | Trade-offs writeup | T36 |
+
+**Eng review amendments applied:**
+
+1. ✅ `broadcastCapture` reuses subscribed `chB` via module-level `worldChannel` ref (T22).
+2. ✅ Recent feed reads `store.feed` only; populated by Channel B broadcast handler (T21 store, T22 broadcast handler, T28 component).
+3. ✅ `fetchAllTiles` paginates via `.range()` (T19); reconnect path also uses it.
+4. ✅ Optimistic-revert compares current tile state to the optimistic write before reverting (T24).
+5. ✅ Vercel Cron fallback added (T9b) with `CRON_SECRET` flow through env (T11, T35 step 3b).
+6. ✅ Realtime handle in `useRef<RealtimeHandle | null>` shared across both code paths (T30).
+7. ✅ Three RPC tests added (T20): footprint reject, non-anchor big reject, expiry re-capture.
+8. ✅ Dirty-flag rAF skip in canvas loop (T24) + spec downgrade from offscreen-buffer to direct paint (spec edited).
+
+**DRY:** `ensurePlayers(ids)` extracted into `lib/api/players.ts` (T18) and reused by T22, T28, T29.
 
 **Placeholder scan** — no TBD/TODO; every code step contains the actual code; no "similar to Task N" handwave; commands have expected outputs where it matters.
 
-**Type consistency** — `TileRow`, `PlayerRow`, `BigTileRow`, `CaptureRow`, `CaptureResult` defined in `lib/types/db.ts` (T16) and consumed by every later task. `Camera` exported from `lib/grid/camera.ts` (T14) and consumed in T21, T23, T24. `BigTileIndex`, `buildBigTileIndex`, `bigTileAt`, `isInsideBigTile` defined in T13 and consumed in T21, T23, T24, T32. Store mutators (`upsertTile`, `removeTile`, `markFading`, `clearFading`, `setHover`) defined and used consistently.
+**Type consistency** — `TileRow`, `PlayerRow`, `BigTileRow`, `CaptureRow`, `CaptureResult` defined in `lib/types/db.ts` (T16) and consumed by every later task. `Camera` exported from `lib/grid/camera.ts` (T14) and consumed in T21, T23, T24. `BigTileIndex`, `buildBigTileIndex`, `bigTileAt`, `isInsideBigTile` defined in T13 and consumed in T21, T23, T24, T32. Store mutators (`upsertTile`, `removeTile`, `markFading`, `clearFading`, `setHover`, `pushFeed`, `clearDirty`) defined in T21 and used consistently. `RealtimeHandle` exported from T22 and consumed in T30.
 
 **Known small gaps** — none that block execution.
