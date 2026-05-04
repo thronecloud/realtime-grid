@@ -1,25 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { buildBigTileIndex, isInsideBigTile, bigTileAt } from '@/lib/grid/big-tiles';
+import { buildMultiplierIndex, multiplierAt } from '@/lib/grid/big-tiles';
 
-const anchors = [
-  { x: 10, y: 10 },
-  { x: 50, y: 80 },
-];
-
-describe('big-tiles', () => {
-  it('isInsideBigTile detects 5x5 footprint', () => {
-    const idx = buildBigTileIndex(anchors);
-    expect(isInsideBigTile(idx, 10, 10)).toBe(true);
-    expect(isInsideBigTile(idx, 14, 14)).toBe(true);
-    expect(isInsideBigTile(idx, 12, 11)).toBe(true);
-    expect(isInsideBigTile(idx, 9, 10)).toBe(false);
-    expect(isInsideBigTile(idx, 15, 14)).toBe(false);
-    expect(isInsideBigTile(idx, 0, 0)).toBe(false);
-  });
-
-  it('bigTileAt returns the anchor or null', () => {
-    const idx = buildBigTileIndex(anchors);
-    expect(bigTileAt(idx, 12, 11)).toEqual({ x: 10, y: 10 });
-    expect(bigTileAt(idx, 9, 9)).toBeNull();
+describe('multiplier index', () => {
+  it('maps cells to their multiplier', () => {
+    const idx = buildMultiplierIndex([
+      { x: 10, y: 10, mult: 5 },
+      { x: 50, y: 80, mult: 10 },
+    ]);
+    expect(multiplierAt(idx, 10, 10)).toBe(5);
+    expect(multiplierAt(idx, 50, 80)).toBe(10);
+    expect(multiplierAt(idx, 9, 10)).toBe(1);
+    expect(multiplierAt(idx, 0, 0)).toBe(1);
   });
 });

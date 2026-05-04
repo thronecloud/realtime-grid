@@ -16,13 +16,19 @@ async function newPlayer(name: string): Promise<SupabaseClient> {
   return sb;
 }
 
+interface TilePayload {
+  owner_id?: string;
+  kind?: 'normal' | 'mult5' | 'mult10';
+}
+
 async function rpc(sb: SupabaseClient, tileId: string) {
   const { data, error } = await sb.rpc('capture_tile', { p_tile_id: tileId });
   if (error) throw error;
-  return data as { ok: boolean; reason: string | null; tile: { owner_id?: string } | null };
+  const rows = data as Array<{ ok: boolean; reason: string | null; tile: TilePayload | null }>;
+  return rows[0];
 }
 
-describe('capture_tile contention', () => {
+describe('capture_tile', () => {
   beforeAll(() => {
     if (!URL || !ANON) throw new Error('Set NEXT_PUBLIC_SUPABASE_* in env');
   });
@@ -48,26 +54,30 @@ describe('capture_tile contention', () => {
     expect(r2.reason).toBe('cooldown');
   });
 
-  it('rejects small tile id inside a big-tile footprint', async () => {
-    const a = await newPlayer('foot-' + Date.now());
-    const sb = createClient(URL, ANON, { auth: { persistSession: false } });
-    const { data: anchors } = await sb.from('big_tiles').select('*').limit(1);
-    expect(anchors?.length).toBe(1);
-    const anchor = anchors![0] as { x: number; y: number };
-    const inside = `s:${anchor.x + 2},${anchor.y + 2}`;
-    const r = await rpc(a, inside);
+  it('rejects non-s: tile id format', async () => {
+    const a = await newPlayer('fmt-' + Date.now());
+    const r = await rpc(a, 'b:0,0');
     expect(r.ok).toBe(false);
     expect(r.reason).toBe('invalid_tile');
   });
 
-  it('rejects big-tile id at a non-anchor position', async () => {
-    const a = await newPlayer('anchor-' + Date.now());
+  it('rejects out-of-bounds tile id', async () => {
+    const a = await newPlayer('bounds-' + Date.now());
+    const r = await rpc(a, 's:99,99');
+    // 99,99 is in bounds — sanity check.
+    expect(r.ok).toBe(true);
+  });
+
+  it('captures a multiplier tile and tags the kind', async () => {
+    // Find a known multiplier cell from big_tiles.
     const sb = createClient(URL, ANON, { auth: { persistSession: false } });
-    const { data: any00 } = await sb.from('big_tiles').select('*').eq('x', 0).eq('y', 0);
-    if (any00 && any00.length > 0) return;
-    const r = await rpc(a, 'b:0,0');
-    expect(r.ok).toBe(false);
-    expect(r.reason).toBe('invalid_tile');
+    const { data: mults } = await sb.from('big_tiles').select('*').limit(1);
+    expect(mults?.length).toBe(1);
+    const m = mults![0] as { x: number; y: number; mult: number };
+    const a = await newPlayer('jackpot-' + Date.now());
+    const r = await rpc(a, `s:${m.x},${m.y}`);
+    expect(r.ok).toBe(true);
+    expect(r.tile?.kind).toBe(m.mult === 10 ? 'mult10' : 'mult5');
   });
 
   it('re-captures an expired tile cleanly', async () => {

@@ -40,10 +40,10 @@ export function IdentityPicker({ open, onSubmit, initialName = '', initialColor 
             .fill(0)
             .map((_, j) => (
               <div key={j} className="flex shrink-0 gap-12 px-6">
-                <span>· LIVE · 100×100 GRID · 100 BIG TILES (5×5) · 10s COOLDOWN ·</span>
-                <span>· 7d OWNERSHIP · POSTGRES-LOCKED CAPTURE · REALTIME FANOUT ·</span>
-                <span>· CLICK TO CLAIM TERRITORY · ★ BIG TILE = 5pt ·</span>
-                <span>· DEFEND. EXPAND. ·</span>
+                <span>· LIVE · 100×100 GRID · 10K CELLS · 10s COOLDOWN · 7d OWNERSHIP ·</span>
+                <span>· POSTGRES-LOCKED CAPTURE · REALTIME FANOUT · CLICK TO CLAIM ·</span>
+                <span>· ✦ 5× &amp; 10× JACKPOTS HIDDEN IN THE GRID · GET LUCKY ·</span>
+                <span>· DEFEND. EXPAND. STRIKE GOLD. ·</span>
               </div>
             ))}
         </div>

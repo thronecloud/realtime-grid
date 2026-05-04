@@ -18,7 +18,7 @@ export default function HomePage() {
   const me = useStore((s) => s.me);
   const setIdentity = useStore((s) => s.setIdentity);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const { toast } = useToast();
+  const { toast, jackpot } = useToast();
   const rtRef = useRef<RealtimeHandle | null>(null);
 
   async function ensureRealtime(player: { id: string; name: string; color: string }) {
@@ -60,7 +60,10 @@ export default function HomePage() {
         </div>
         <div className="relative flex-1 bg-[var(--bg-void)]">
           {auth.status === 'ready' && me && (
-            <GridCanvas onCaptureRejected={(reason) => toast(reason)} />
+            <GridCanvas
+              onCaptureRejected={(reason) => toast(reason)}
+              onJackpot={(mult) => jackpot(mult)}
+            />
           )}
           <HoverTooltip />
           {/* Crosshair frame on the canvas viewport */}
@@ -70,7 +73,7 @@ export default function HomePage() {
               <span>RADAR · LIVE</span>
             </div>
             <div className="absolute right-3 top-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
-              GRID 100×100 · BIG ×100
+              GRID 100×100 · 10K CELLS
             </div>
             <div className="absolute bottom-3 left-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
               DRAG · PAN  ·  WHEEL · ZOOM

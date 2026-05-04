@@ -2,6 +2,8 @@
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
 
+const SCORE: Record<string, number> = { normal: 1, mult5: 5, mult10: 10 };
+
 export function Leaderboard() {
   const tiles = useStore((s) => s.tiles);
   const players = useStore((s) => s.players);
@@ -9,20 +11,19 @@ export function Leaderboard() {
 
   const rows = useMemo(() => {
     const score = new Map<string, number>();
-    const big = new Map<string, number>();
-    const small = new Map<string, number>();
+    const jackpots = new Map<string, number>();
     for (const t of tiles.values()) {
-      score.set(t.owner_id, (score.get(t.owner_id) ?? 0) + (t.kind === 'big' ? 5 : 1));
-      if (t.kind === 'big') big.set(t.owner_id, (big.get(t.owner_id) ?? 0) + 1);
-      else small.set(t.owner_id, (small.get(t.owner_id) ?? 0) + 1);
+      score.set(t.owner_id, (score.get(t.owner_id) ?? 0) + (SCORE[t.kind] ?? 1));
+      if (t.kind === 'mult5' || t.kind === 'mult10') {
+        jackpots.set(t.owner_id, (jackpots.get(t.owner_id) ?? 0) + 1);
+      }
     }
     return [...score.entries()]
       .map(([id, n]) => ({
         id,
         n,
         p: players.get(id),
-        big: big.get(id) ?? 0,
-        small: small.get(id) ?? 0,
+        jackpots: jackpots.get(id) ?? 0,
       }))
       .sort((a, b) => b.n - a.n)
       .slice(0, 10);
@@ -67,9 +68,9 @@ export function Leaderboard() {
               <span className="truncate text-[var(--fg)]">
                 {r.p?.name ?? r.id.slice(0, 6)}
               </span>
-              {r.big > 0 && (
+              {r.jackpots > 0 && (
                 <span className="text-[9px] font-bold text-[var(--accent-amber)]">
-                  ★{r.big}
+                  ✦{r.jackpots}
                 </span>
               )}
               <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums tnum text-[var(--fg)]">

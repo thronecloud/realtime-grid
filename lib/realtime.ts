@@ -4,7 +4,7 @@ import { getSupabaseBrowser } from '@/lib/supabase/client';
 import { useStore } from '@/lib/store';
 import { fetchAllTiles, fetchBigTiles } from '@/lib/api/tiles';
 import { ensurePlayers } from '@/lib/api/players';
-import type { TileRow } from '@/lib/types/db';
+import type { TileKind, TileRow } from '@/lib/types/db';
 
 export interface RealtimeHandle { stop(): void }
 
@@ -20,7 +20,7 @@ export async function startRealtime(opts: {
   const store = useStore.getState();
 
   const [bigs, tiles] = await Promise.all([fetchBigTiles(), fetchAllTiles()]);
-  store.setBigTiles(bigs);
+  store.setMultipliers(bigs);
   store.setInitialTiles(tiles);
   await ensurePlayers([...new Set(tiles.map((t) => t.owner_id))]);
 
@@ -50,7 +50,15 @@ export async function startRealtime(opts: {
     .subscribe();
 
   const chB: RealtimeChannel = sb
-    .channel('world', { config: { presence: { key: opts.me.id } } })
+    .channel('world', {
+      config: {
+        presence: { key: opts.me.id },
+        // Self-receive: the captor sees their own broadcast in the feed too,
+        // so the recent-captures rail stays consistent across all clients
+        // including the one that just captured.
+        broadcast: { self: true },
+      },
+    })
     .on('presence', { event: 'sync' }, () => {
       const state = chB.presenceState() as Record<
         string,
@@ -62,7 +70,7 @@ export async function startRealtime(opts: {
       useStore.getState().setOnline(peers);
     })
     .on('broadcast', { event: 'capture' }, (msg) => {
-      const p = msg.payload as { playerId: string; tileId: string; kind: 'small' | 'big' };
+      const p = msg.payload as { playerId: string; tileId: string; kind: TileKind };
       const ts = Date.now();
       useStore.getState().pushFeed({
         key: `${ts}-${p.tileId}`,
@@ -82,7 +90,7 @@ export async function startRealtime(opts: {
 
   const onOnline = async () => {
     const [bigs2, tiles2] = await Promise.all([fetchBigTiles(), fetchAllTiles()]);
-    useStore.getState().setBigTiles(bigs2);
+    useStore.getState().setMultipliers(bigs2);
     useStore.getState().setInitialTiles(tiles2);
     await ensurePlayers([...new Set(tiles2.map((t) => t.owner_id))]);
   };
@@ -99,7 +107,7 @@ export async function startRealtime(opts: {
 }
 
 export function broadcastCapture(payload: {
-  playerId: string; tileId: string; kind: 'small' | 'big';
+  playerId: string; tileId: string; kind: TileKind;
 }) {
   if (!worldChannel) return;
   worldChannel.send({ type: 'broadcast', event: 'capture', payload });

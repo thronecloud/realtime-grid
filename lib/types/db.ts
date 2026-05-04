@@ -1,3 +1,5 @@
+export type TileKind = 'normal' | 'mult5' | 'mult10';
+
 export interface PlayerRow {
   id: string;
   name: string;
@@ -6,11 +8,13 @@ export interface PlayerRow {
   created_at: string;
 }
 
-export interface BigTileRow { x: number; y: number }
+// Pre-seeded multiplier positions. Server keeps the table named `big_tiles`
+// for migration simplicity, but each row is now a single jackpot cell.
+export interface BigTileRow { x: number; y: number; mult: number }
 
 export interface TileRow {
   id: string;
-  kind: 'small' | 'big';
+  kind: TileKind;
   x: number;
   y: number;
   owner_id: string;
@@ -22,7 +26,7 @@ export interface CaptureRow {
   id: number;
   player_id: string;
   tile_id: string;
-  kind: 'small' | 'big';
+  kind: TileKind;
   captured_at: string;
 }
 

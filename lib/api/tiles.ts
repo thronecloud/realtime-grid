@@ -31,5 +31,7 @@ export async function captureTile(tileId: string): Promise<CaptureResult> {
   const sb = getSupabaseBrowser();
   const { data, error } = await sb.rpc('capture_tile', { p_tile_id: tileId });
   if (error) throw error;
-  return data as unknown as CaptureResult;
+  // RPC RETURNS TABLE(...) yields an array of rows (always exactly one here).
+  const rows = (data as unknown as CaptureResult[]) ?? [];
+  return rows[0] ?? { ok: false, reason: 'no_result', tile: null };
 }

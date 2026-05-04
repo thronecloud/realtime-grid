@@ -53,6 +53,7 @@ export function RecentFeed() {
         <ul className="divide-y divide-[var(--line)]/50">
           {feed.map((i) => {
             const p = players.get(i.playerId);
+            const mult = i.kind === 'mult10' ? 10 : i.kind === 'mult5' ? 5 : 1;
             return (
               <li
                 key={i.key}
@@ -67,14 +68,19 @@ export function RecentFeed() {
                 </span>
                 <span className="text-[var(--fg-dim)]">→</span>
                 <span className="font-mono text-[10px] text-[var(--fg-muted)] tnum">
-                  {i.tileId}
+                  {i.tileId.slice(2)}
                 </span>
-                {i.kind === 'big' && (
-                  <span className="ml-auto bg-[var(--accent-amber)]/15 px-1 py-px text-[9px] font-bold tracking-[0.15em] text-[var(--accent-amber)]">
-                    ★ BIG
+                {mult > 1 ? (
+                  <span
+                    className={`ml-auto px-1 py-px text-[9px] font-bold tracking-[0.15em] ${
+                      mult === 10
+                        ? 'bg-[var(--accent-amber)]/25 text-[var(--accent-amber)]'
+                        : 'bg-[var(--accent-amber)]/12 text-[var(--accent-amber)]/90'
+                    }`}
+                  >
+                    ✦ {mult}×
                   </span>
-                )}
-                {i.kind !== 'big' && (
+                ) : (
                   <span className="ml-auto text-[10px] text-[var(--fg-dim)] tnum">
                     {fmtAgo(i.ts)}
                   </span>

@@ -1,6 +1,5 @@
 'use client';
 import { useStore } from '@/lib/store';
-import { bigTileAt } from '@/lib/grid/big-tiles';
 
 function fmtRel(iso: string): string {
   const d = Date.parse(iso) - Date.now();
@@ -16,13 +15,12 @@ export function HoverTooltip() {
   const hoverCell = useStore((s) => s.hoverCell);
   const tiles = useStore((s) => s.tiles);
   const players = useStore((s) => s.players);
-  const bigIndex = useStore((s) => s.bigIndex);
   if (!hoverScreen || !hoverCell) return null;
 
-  const big = bigTileAt(bigIndex, hoverCell.x, hoverCell.y);
-  const id = big ? `b:${big.x},${big.y}` : `s:${hoverCell.x},${hoverCell.y}`;
+  const id = `s:${hoverCell.x},${hoverCell.y}`;
   const t = tiles.get(id);
   const p = t ? players.get(t.owner_id) : null;
+  const mult = t?.kind === 'mult10' ? 10 : t?.kind === 'mult5' ? 5 : 1;
 
   const style: React.CSSProperties = {
     left: hoverScreen.x + 14,
@@ -38,11 +36,11 @@ export function HoverTooltip() {
       <span className="br-br" />
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-mono text-[11px] tabular-nums tnum text-[var(--fg)]">
-          {id}
+          {hoverCell.x},{hoverCell.y}
         </span>
-        {big && (
-          <span className="bg-[var(--accent-amber)]/15 px-1 py-px text-[8px] font-bold tracking-[0.2em] text-[var(--accent-amber)]">
-            ★ BIG · 5pt
+        {mult > 1 && (
+          <span className="bg-[var(--accent-amber)]/20 px-1 py-px text-[8px] font-bold tracking-[0.2em] text-[var(--accent-amber)]">
+            ✦ {mult}× JACKPOT
           </span>
         )}
       </div>

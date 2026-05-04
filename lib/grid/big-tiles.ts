@@ -1,28 +1,23 @@
-export interface BigAnchor { x: number; y: number }
+// Multiplier-tile index: maps a single (x,y) cell to its multiplier (5 or 10).
+// Cells absent from the index are normal 1x-payoff tiles. The index is purely
+// for client-side awareness — multipliers are HIDDEN visually; they are
+// revealed on capture by the server-returned tile.kind ('mult5'/'mult10').
 
-export interface BigTileIndex {
-  anchors: BigAnchor[];
-  cellToAnchor: Map<string, BigAnchor>;
+export interface MultiplierAnchor { x: number; y: number; mult: number }
+
+export interface MultiplierIndex {
+  anchors: MultiplierAnchor[];
+  byCell: Map<string, number>;
 }
 
 const KEY = (x: number, y: number) => `${x},${y}`;
 
-export function buildBigTileIndex(anchors: BigAnchor[]): BigTileIndex {
-  const cellToAnchor = new Map<string, BigAnchor>();
-  for (const a of anchors) {
-    for (let dx = 0; dx < 5; dx++) {
-      for (let dy = 0; dy < 5; dy++) {
-        cellToAnchor.set(KEY(a.x + dx, a.y + dy), a);
-      }
-    }
-  }
-  return { anchors, cellToAnchor };
+export function buildMultiplierIndex(anchors: MultiplierAnchor[]): MultiplierIndex {
+  const byCell = new Map<string, number>();
+  for (const a of anchors) byCell.set(KEY(a.x, a.y), a.mult);
+  return { anchors, byCell };
 }
 
-export function isInsideBigTile(idx: BigTileIndex, x: number, y: number): boolean {
-  return idx.cellToAnchor.has(KEY(x, y));
-}
-
-export function bigTileAt(idx: BigTileIndex, x: number, y: number): BigAnchor | null {
-  return idx.cellToAnchor.get(KEY(x, y)) ?? null;
+export function multiplierAt(idx: MultiplierIndex, x: number, y: number): number {
+  return idx.byCell.get(KEY(x, y)) ?? 1;
 }

@@ -1,7 +1,6 @@
 import type { Camera } from './camera';
 import { worldToScreen } from './camera';
 import type { PlayerRow, TileRow } from '@/lib/types/db';
-import type { BigTileIndex } from './big-tiles';
 
 export const TILE_PX = 16;
 export const WORLD_CELLS = 100;
@@ -11,27 +10,27 @@ export interface PaintInput {
   ctx: CanvasRenderingContext2D;
   camera: Camera;
   viewport: { w: number; h: number };
-  bigIndex: BigTileIndex;
   tiles: Map<string, TileRow>;
   players: Map<string, PlayerRow>;
   flashes: Map<string, number>;
   fadingOut: Map<string, { startedAt: number; durationMs: number }>;
   hovered: { x: number; y: number } | null;
+  // Recently-revealed jackpot cells: tileId -> until ms. Renders a brief
+  // gold sparkle overlay so the captor sees the multiplier reveal.
+  reveals: Map<string, { until: number; mult: number }>;
 }
 
 const BG = '#07080a';
-const GRID = '#14181f';
-const UNCLAIMED = '#1a1d26';
-const BIG_UNCLAIMED = '#2a2218';
-const BIG_BORDER = 'rgba(245, 194, 69, 0.7)';
-const BIG_GLOW = 'rgba(245, 194, 69, 0.18)';
+const GRID = '#1c2230';
+const UNCLAIMED = '#21263a';      // brighter so the grid texture is always visible
+const UNCLAIMED_ALT = '#1c2030';  // checker contrast cell — every other column
 
 function colorFor(t: TileRow, players: Map<string, PlayerRow>): string {
   return players.get(t.owner_id)?.color ?? '#6b7280';
 }
 
 export function paint(input: PaintInput) {
-  const { ctx, camera, viewport, bigIndex, tiles, players, flashes, fadingOut, hovered } = input;
+  const { ctx, camera, viewport, tiles, players, flashes, fadingOut, hovered, reveals } = input;
   ctx.save();
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, viewport.w, viewport.h);
@@ -47,71 +46,59 @@ export function paint(input: PaintInput) {
   const x1 = Math.min(WORLD_CELLS - 1, Math.ceil(brWorld.x / TILE_PX) + 1);
   const y1 = Math.min(WORLD_CELLS - 1, Math.ceil(brWorld.y / TILE_PX) + 1);
 
-  // 1. small cells (skipping big-tile footprints)
+  const now = Date.now();
+
   for (let cx = x0; cx <= x1; cx++) {
     for (let cy = y0; cy <= y1; cy++) {
-      if (bigIndex.cellToAnchor.has(`${cx},${cy}`)) continue;
       const id = `s:${cx},${cy}`;
       const t = tiles.get(id);
       const screen = worldToScreen(camera, cx * TILE_PX, cy * TILE_PX);
-      ctx.fillStyle = t ? colorFor(t, players) : UNCLAIMED;
+      // Subtle 2x2 checker on unclaimed cells so the grid texture reads as a
+      // grid even when no tiles are captured.
+      const checker = ((cx + cy) & 1) === 0 ? UNCLAIMED : UNCLAIMED_ALT;
+      ctx.fillStyle = t ? colorFor(t, players) : checker;
       ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
 
+      // Capture flash — instant white pulse on any new ownership write
       const f = flashes.get(id);
-      if (f && f > Date.now()) {
-        const a = (f - Date.now()) / 220;
+      if (f && f > now) {
+        const a = (f - now) / 220;
         ctx.fillStyle = `rgba(255,255,255,${0.55 * a})`;
         ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
       }
 
+      // Jackpot reveal — gold pulse + sparkle ring on multiplier captures
+      const rev = reveals.get(id);
+      if (rev && rev.until > now) {
+        const remain = rev.until - now;
+        const total = rev.mult === 10 ? 1500 : 1000;
+        const a = Math.min(1, remain / total);
+        // gold inner glow
+        ctx.fillStyle = `rgba(245,194,69,${0.55 * a})`;
+        ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
+        // sparkle ring (inflating)
+        const grow = (1 - a) * cellPx * (rev.mult === 10 ? 4 : 2.5);
+        ctx.strokeStyle = `rgba(245,194,69,${a})`;
+        ctx.lineWidth = Math.max(1, camera.zoom);
+        ctx.strokeRect(
+          screen.x - grow / 2,
+          screen.y - grow / 2,
+          cellPx + grow,
+          cellPx + grow,
+        );
+      }
+
+      // Expiry fade — UNCLAIMED with rising alpha
       const fade = fadingOut.get(id);
       if (fade) {
-        const t2 = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
+        const t2 = Math.min(1, (now - fade.startedAt) / fade.durationMs);
         ctx.fillStyle = `rgba(26,29,38,${t2})`;
         ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
       }
     }
   }
 
-  // 2. big tiles (5x5 footprint each) — gold-bordered with subtle inner glow
-  for (const a of bigIndex.anchors) {
-    if (a.x + 4 < x0 || a.x > x1 || a.y + 4 < y0 || a.y > y1) continue;
-    const id = `b:${a.x},${a.y}`;
-    const t = tiles.get(id);
-    const screen = worldToScreen(camera, a.x * TILE_PX, a.y * TILE_PX);
-    const size = cellPx * 5;
-    ctx.fillStyle = t ? colorFor(t, players) : BIG_UNCLAIMED;
-    ctx.fillRect(screen.x, screen.y, size, size);
-    // inner glow when unclaimed (signals "rare reward")
-    if (!t) {
-      const grad = ctx.createRadialGradient(
-        screen.x + size / 2, screen.y + size / 2, size * 0.05,
-        screen.x + size / 2, screen.y + size / 2, size * 0.7,
-      );
-      grad.addColorStop(0, BIG_GLOW);
-      grad.addColorStop(1, 'rgba(245,194,69,0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(screen.x, screen.y, size, size);
-    }
-    ctx.strokeStyle = BIG_BORDER;
-    ctx.lineWidth = Math.max(1, camera.zoom);
-    ctx.strokeRect(screen.x + 0.5, screen.y + 0.5, size - 1, size - 1);
-
-    const f = flashes.get(id);
-    if (f && f > Date.now()) {
-      const aLevel = (f - Date.now()) / 220;
-      ctx.fillStyle = `rgba(255,255,255,${0.55 * aLevel})`;
-      ctx.fillRect(screen.x, screen.y, size, size);
-    }
-    const fade = fadingOut.get(id);
-    if (fade) {
-      const t2 = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
-      ctx.fillStyle = `rgba(42,34,24,${t2})`;
-      ctx.fillRect(screen.x, screen.y, size, size);
-    }
-  }
-
-  // 3. hover ring
+  // Hover ring
   if (hovered) {
     const screen = worldToScreen(camera, hovered.x * TILE_PX, hovered.y * TILE_PX);
     ctx.strokeStyle = '#ffffff';
@@ -119,7 +106,7 @@ export function paint(input: PaintInput) {
     ctx.strokeRect(screen.x + 1, screen.y + 1, cellPx - 2, cellPx - 2);
   }
 
-  // 4. grid hairlines (only at zoom >= 1.5)
+  // Grid hairlines (only at zoom >= 1.5 — they get noisy at low zoom)
   if (camera.zoom >= 1.5) {
     ctx.strokeStyle = GRID;
     ctx.lineWidth = 1;

@@ -3,13 +3,13 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { paint, TILE_PX, WORLD_PX } from '@/lib/grid/renderer';
 import { clampCamera, pan, zoomAt } from '@/lib/grid/camera';
-import { bigTileAt } from '@/lib/grid/big-tiles';
 import { captureTile } from '@/lib/api/tiles';
 import { broadcastCapture } from '@/lib/realtime';
+import type { TileRow } from '@/lib/types/db';
 
-interface Props { onCaptureRejected?: (reason: string) => void }
+interface Props { onCaptureRejected?: (reason: string) => void; onJackpot?: (mult: number) => void }
 
-export function GridCanvas({ onCaptureRejected }: Props) {
+export function GridCanvas({ onCaptureRejected, onJackpot }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef<{ x: number; y: number; moved: number; startedAt: number } | null>(null);
@@ -34,20 +34,21 @@ export function GridCanvas({ onCaptureRejected }: Props) {
     const loop = () => {
       const s = useStore.getState();
       const now = Date.now();
-      const hasActiveFlash = s.flashes.some((f) => f.until > now);
-      const hasActiveFade = s.fadingOut.size > 0;
-      if (s.dirty || hasActiveFlash || hasActiveFade) {
+      const hasFlash = s.flashes.some((f) => f.until > now);
+      const hasFade = s.fadingOut.size > 0;
+      const hasReveal = [...s.reveals.values()].some((r) => r.until > now);
+      if (s.dirty || hasFlash || hasFade || hasReveal) {
         const rect = containerRef.current!.getBoundingClientRect();
         const flashMap = new Map(s.flashes.map((f) => [f.tileId, f.until]));
         paint({
           ctx,
           camera: s.camera,
           viewport: { w: rect.width, h: rect.height },
-          bigIndex: s.bigIndex,
           tiles: s.tiles,
           players: s.players,
           flashes: flashMap,
           fadingOut: s.fadingOut,
+          reveals: s.reveals,
           hovered: s.hoverCell,
         });
         if (s.dirty) useStore.getState().clearDirty();
@@ -81,13 +82,14 @@ export function GridCanvas({ onCaptureRejected }: Props) {
       onCaptureRejected?.('cooldown');
       return;
     }
-    const big = bigTileAt(s.bigIndex, cellX, cellY);
-    const tileId = big ? `b:${big.x},${big.y}` : `s:${cellX},${cellY}`;
-    const optimistic = {
+    const tileId = `s:${cellX},${cellY}`;
+    // Optimistic — assume normal tile. The server-returned kind reveals the
+    // multiplier; we then upgrade and fire the jackpot animation.
+    const optimistic: TileRow = {
       id: tileId,
-      kind: big ? ('big' as const) : ('small' as const),
-      x: big?.x ?? cellX,
-      y: big?.y ?? cellY,
+      kind: 'normal',
+      x: cellX,
+      y: cellY,
       owner_id: s.userId ?? '',
       captured_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(),
@@ -115,10 +117,19 @@ export function GridCanvas({ onCaptureRejected }: Props) {
     }
     if (res.tile) {
       useStore.getState().upsertTile(res.tile);
+      // Jackpot reveal: kind comes back as 'mult5' or 'mult10' if the cell
+      // was a hidden multiplier. Fire the gold sparkle + a toast.
+      if (res.tile.kind === 'mult5' || res.tile.kind === 'mult10') {
+        const mult = res.tile.kind === 'mult10' ? 10 : 5;
+        const dur = mult === 10 ? 1500 : 1000;
+        useStore.getState().pushReveal(tileId, mult, dur);
+        setTimeout(() => useStore.getState().clearReveal(tileId), dur);
+        onJackpot?.(mult);
+      }
     }
     useStore.getState().startCooldown(10);
-    if (s.userId && s.me) {
-      broadcastCapture({ playerId: s.userId, tileId, kind: optimistic.kind });
+    if (s.userId && s.me && res.tile) {
+      broadcastCapture({ playerId: s.userId, tileId, kind: res.tile.kind });
     }
   }
 
