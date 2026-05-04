@@ -7,6 +7,7 @@ function fmtRel(iso: string): string {
   if (d <= 0) return 'expired';
   const days = Math.floor(d / 86_400_000);
   const hours = Math.floor((d % 86_400_000) / 3_600_000);
+  if (days === 0) return `${hours}h`;
   return `${days}d ${hours}h`;
 }
 
@@ -24,33 +25,50 @@ export function HoverTooltip() {
   const p = t ? players.get(t.owner_id) : null;
 
   const style: React.CSSProperties = {
-    left: hoverScreen.x + 12,
-    top: hoverScreen.y + 12,
+    left: hoverScreen.x + 14,
+    top: hoverScreen.y + 14,
   };
 
   return (
     <div
-      className="pointer-events-none absolute z-10 rounded-md bg-neutral-900/95 px-3 py-2 text-xs ring-1 ring-neutral-800"
+      className="brackets pointer-events-none absolute z-10 min-w-[180px] border border-[var(--line-strong)] bg-[var(--bg-panel)]/95 px-3 py-2 backdrop-blur"
       style={style}
     >
-      <div className="font-mono text-neutral-300">
-        {id}
-        {big ? ' (big)' : ''}
+      <span className="br-bl" />
+      <span className="br-br" />
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-mono text-[11px] tabular-nums tnum text-[var(--fg)]">
+          {id}
+        </span>
+        {big && (
+          <span className="bg-[var(--accent-amber)]/15 px-1 py-px text-[8px] font-bold tracking-[0.2em] text-[var(--accent-amber)]">
+            ★ BIG · 5pt
+          </span>
+        )}
       </div>
-      {t ? (
-        <>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{ background: p?.color ?? '#888' }}
-            />
-            <span>{p?.name ?? '…'}</span>
+      <div className="mt-2 space-y-0.5 text-[10px]">
+        {t ? (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="label w-14">OWNER</span>
+              <span className="chip" style={{ background: p?.color ?? '#666' }} />
+              <span className="text-[var(--fg)]">{p?.name ?? '·····'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="label w-14">EXPIRES</span>
+              <span className="font-mono tabular-nums tnum text-[var(--fg-muted)]">
+                {fmtRel(t.expires_at)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="label w-14">STATUS</span>
+            <span className="text-[var(--accent-signal)]">UNCLAIMED</span>
+            <span className="ml-auto text-[var(--fg-dim)]">click to capture</span>
           </div>
-          <div className="text-neutral-500">expires in {fmtRel(t.expires_at)}</div>
-        </>
-      ) : (
-        <div className="text-neutral-500">unclaimed</div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

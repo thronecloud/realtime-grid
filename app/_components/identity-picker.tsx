@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { randomPlayerColor, isValidHexColor } from '@/lib/colors';
 
 interface Props {
@@ -9,22 +9,83 @@ interface Props {
   initialColor?: string;
 }
 
+const SUGGESTED_NAMES = ['NORTH', 'KAIRO', 'HEX', 'OBSIDIAN', 'CIPHER', 'EMBER', 'VALKYRIE', 'ATLAS'];
+
 export function IdentityPicker({ open, onSubmit, initialName = '', initialColor }: Props) {
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor ?? randomPlayerColor());
+
+  useEffect(() => {
+    if (open && !name) {
+      const suggested = SUGGESTED_NAMES[Math.floor(Math.random() * SUGGESTED_NAMES.length)];
+      setName(suggested);
+    }
+  }, [open, name]);
 
   if (!open) return null;
   const valid = name.trim().length >= 1 && name.trim().length <= 24 && isValidHexColor(color);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl">
-        <h2 className="text-lg font-semibold tracking-tight">Pick a name &amp; color</h2>
-        <p className="mt-1 text-sm text-neutral-400">Used for tiles you capture.</p>
-        <div className="mt-5 space-y-4">
-          <div className="space-y-1.5">
-            <label htmlFor="name" className="text-xs font-medium uppercase tracking-wider text-neutral-400">
-              Display name
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-void)]/85 backdrop-blur-md"
+      style={{
+        backgroundImage:
+          'radial-gradient(ellipse 90% 60% at 50% 30%, rgba(245,194,69,0.10), transparent 60%)',
+      }}
+    >
+      {/* Marquee ticker — atmospheric */}
+      <div className="pointer-events-none absolute top-10 w-full overflow-hidden border-y border-[var(--line)] bg-[var(--bg-panel)]/40 py-2 text-[10px] uppercase tracking-[0.3em] text-[var(--fg-dim)]">
+        <div className="flex animate-[ticker_60s_linear_infinite] whitespace-nowrap">
+          {Array(2)
+            .fill(0)
+            .map((_, j) => (
+              <div key={j} className="flex shrink-0 gap-12 px-6">
+                <span>· LIVE · 100×100 GRID · 100 BIG TILES (5×5) · 10s COOLDOWN ·</span>
+                <span>· 7d OWNERSHIP · POSTGRES-LOCKED CAPTURE · REALTIME FANOUT ·</span>
+                <span>· CLICK TO CLAIM TERRITORY · ★ BIG TILE = 5pt ·</span>
+                <span>· DEFEND. EXPAND. ·</span>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) onSubmit(name.trim(), color);
+        }}
+        className="brackets relative w-full max-w-md border border-[var(--line-strong)] bg-[var(--bg-panel)] p-8"
+      >
+        <span className="br-bl" />
+        <span className="br-br" />
+
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 animate-pulse bg-[var(--accent-amber)]" />
+          <span className="label">// NEW OPERATIVE</span>
+        </div>
+
+        <h1 className="mt-3 text-[28px] font-bold uppercase leading-none tracking-[0.04em] text-[var(--fg)]">
+          Enter the
+          <br />
+          <span className="text-[var(--accent-amber)]">grid.</span>
+        </h1>
+
+        <p className="mt-3 max-w-[28ch] text-[12px] leading-relaxed text-[var(--fg-muted)]">
+          Pick a callsign and color. Every tile you capture broadcasts in real time to
+          everyone online.
+        </p>
+
+        <div className="mt-6 space-y-5">
+          {/* Callsign */}
+          <div>
+            <label
+              htmlFor="name"
+              className="mb-1.5 flex items-center justify-between"
+            >
+              <span className="label">CALLSIGN</span>
+              <span className="text-[10px] tabular-nums tnum text-[var(--fg-dim)]">
+                {name.length}/24
+              </span>
             </label>
             <input
               id="name"
@@ -32,40 +93,62 @@ export function IdentityPicker({ open, onSubmit, initialName = '', initialColor 
               maxLength={24}
               onChange={(e) => setName(e.target.value)}
               autoFocus
-              className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              className="w-full border border-[var(--line)] bg-[var(--bg-sunken)] px-3 py-2.5 font-mono text-[14px] uppercase tracking-[0.05em] text-[var(--fg)] outline-none transition focus:border-[var(--accent-amber)]/60 focus:bg-[var(--bg-void)]"
             />
           </div>
-          <div className="space-y-1.5">
-            <label htmlFor="color" className="text-xs font-medium uppercase tracking-wider text-neutral-400">
-              Color
-            </label>
+
+          {/* Color */}
+          <div>
+            <span className="label mb-1.5 block">SQUAD COLOR</span>
             <div className="flex items-center gap-3">
-              <input
-                id="color"
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-10 w-12 cursor-pointer rounded-md border border-neutral-800 bg-transparent"
-              />
+              <label className="relative inline-flex h-12 w-12 cursor-pointer items-center justify-center border border-[var(--line)] bg-[var(--bg-sunken)] transition hover:border-[var(--accent-amber)]/60">
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+                <span
+                  className="block h-6 w-6"
+                  style={{
+                    background: color,
+                    boxShadow:
+                      '0 0 0 1px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.12)',
+                  }}
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => setColor(randomPlayerColor())}
-                className="rounded-md border border-neutral-800 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-900"
+                className="flex items-center gap-2 border border-[var(--line)] bg-[var(--bg-sunken)] px-3 py-2 text-[11px] uppercase tracking-[0.15em] text-[var(--fg-muted)] transition hover:border-[var(--accent-amber)]/60 hover:text-[var(--fg)]"
               >
-                Random
+                <span>↻</span>
+                <span>SHUFFLE</span>
               </button>
-              <span className="ml-auto h-6 w-6 rounded-full" style={{ background: color }} />
+              <span
+                className="ml-auto font-mono text-[10px] uppercase tabular-nums tnum text-[var(--fg-dim)]"
+                style={{ color }}
+              >
+                {color}
+              </span>
             </div>
           </div>
         </div>
+
         <button
+          type="submit"
           disabled={!valid}
-          onClick={() => onSubmit(name.trim(), color)}
-          className="mt-6 w-full rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+          className="group relative mt-7 flex w-full items-center justify-between border border-[var(--accent-amber)]/40 bg-[var(--accent-amber)] px-4 py-3 text-[12px] font-bold uppercase tracking-[0.2em] text-[var(--bg-void)] transition hover:bg-[var(--fg)] disabled:cursor-not-allowed disabled:border-[var(--line)] disabled:bg-[var(--bg-sunken)] disabled:text-[var(--fg-dim)]"
         >
-          Start playing
+          <span>DEPLOY TO GRID</span>
+          <span className="transition group-hover:translate-x-1">▸▸</span>
         </button>
-      </div>
+
+        <div className="mt-5 flex items-center justify-between border-t border-[var(--line)] pt-3 text-[9px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
+          <span>SESSION · ANONYMOUS</span>
+          <span>v0.1.0</span>
+        </div>
+      </form>
     </div>
   );
 }

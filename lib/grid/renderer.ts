@@ -19,11 +19,12 @@ export interface PaintInput {
   hovered: { x: number; y: number } | null;
 }
 
-const BG = '#0a0a0c';
-const GRID = '#15161a';
-const UNCLAIMED = '#1e1f25';
-const BIG_UNCLAIMED = '#26211a';
-const BIG_BORDER = 'rgba(255, 215, 0, 0.55)';
+const BG = '#07080a';
+const GRID = '#14181f';
+const UNCLAIMED = '#1a1d26';
+const BIG_UNCLAIMED = '#2a2218';
+const BIG_BORDER = 'rgba(245, 194, 69, 0.7)';
+const BIG_GLOW = 'rgba(245, 194, 69, 0.18)';
 
 function colorFor(t: TileRow, players: Map<string, PlayerRow>): string {
   return players.get(t.owner_id)?.color ?? '#6b7280';
@@ -66,13 +67,13 @@ export function paint(input: PaintInput) {
       const fade = fadingOut.get(id);
       if (fade) {
         const t2 = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
-        ctx.fillStyle = `rgba(30,31,37,${t2})`;
+        ctx.fillStyle = `rgba(26,29,38,${t2})`;
         ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
       }
     }
   }
 
-  // 2. big tiles (5x5 footprint each)
+  // 2. big tiles (5x5 footprint each) — gold-bordered with subtle inner glow
   for (const a of bigIndex.anchors) {
     if (a.x + 4 < x0 || a.x > x1 || a.y + 4 < y0 || a.y > y1) continue;
     const id = `b:${a.x},${a.y}`;
@@ -81,6 +82,17 @@ export function paint(input: PaintInput) {
     const size = cellPx * 5;
     ctx.fillStyle = t ? colorFor(t, players) : BIG_UNCLAIMED;
     ctx.fillRect(screen.x, screen.y, size, size);
+    // inner glow when unclaimed (signals "rare reward")
+    if (!t) {
+      const grad = ctx.createRadialGradient(
+        screen.x + size / 2, screen.y + size / 2, size * 0.05,
+        screen.x + size / 2, screen.y + size / 2, size * 0.7,
+      );
+      grad.addColorStop(0, BIG_GLOW);
+      grad.addColorStop(1, 'rgba(245,194,69,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(screen.x, screen.y, size, size);
+    }
     ctx.strokeStyle = BIG_BORDER;
     ctx.lineWidth = Math.max(1, camera.zoom);
     ctx.strokeRect(screen.x + 0.5, screen.y + 0.5, size - 1, size - 1);
@@ -94,7 +106,7 @@ export function paint(input: PaintInput) {
     const fade = fadingOut.get(id);
     if (fade) {
       const t2 = Math.min(1, (Date.now() - fade.startedAt) / fade.durationMs);
-      ctx.fillStyle = `rgba(38,33,26,${t2})`;
+      ctx.fillStyle = `rgba(42,34,24,${t2})`;
       ctx.fillRect(screen.x, screen.y, size, size);
     }
   }

@@ -5,36 +5,84 @@ import { useStore } from '@/lib/store';
 export function Leaderboard() {
   const tiles = useStore((s) => s.tiles);
   const players = useStore((s) => s.players);
+  const me = useStore((s) => s.me);
 
   const rows = useMemo(() => {
     const score = new Map<string, number>();
+    const big = new Map<string, number>();
+    const small = new Map<string, number>();
     for (const t of tiles.values()) {
       score.set(t.owner_id, (score.get(t.owner_id) ?? 0) + (t.kind === 'big' ? 5 : 1));
+      if (t.kind === 'big') big.set(t.owner_id, (big.get(t.owner_id) ?? 0) + 1);
+      else small.set(t.owner_id, (small.get(t.owner_id) ?? 0) + 1);
     }
     return [...score.entries()]
-      .map(([id, n]) => ({ id, n, p: players.get(id) }))
+      .map(([id, n]) => ({
+        id,
+        n,
+        p: players.get(id),
+        big: big.get(id) ?? 0,
+        small: small.get(id) ?? 0,
+      }))
       .sort((a, b) => b.n - a.n)
       .slice(0, 10);
   }, [tiles, players]);
 
+  const max = rows[0]?.n ?? 1;
+
   return (
-    <section className="border-b border-neutral-900 p-3">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-        Leaderboard
-      </h2>
-      <ol className="space-y-1 text-sm">
-        {rows.map((r, i) => (
-          <li key={r.id} className="flex items-center gap-2">
-            <span className="w-5 text-right text-neutral-500">{i + 1}.</span>
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: r.p?.color ?? '#888' }}
-            />
-            <span className="truncate">{r.p?.name ?? r.id.slice(0, 6)}</span>
-            <span className="ml-auto font-mono text-xs">{r.n}</span>
+    <section className="border-b border-[var(--line)]">
+      <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="h-1 w-3 bg-[var(--accent-amber)]" />
+          <span className="label">LEADERBOARD</span>
+        </div>
+        <span className="label">TOP 10</span>
+      </div>
+      <ol className="text-[11px]">
+        {rows.map((r, i) => {
+          const pct = (r.n / max) * 100;
+          const isMe = me && r.id === me.id;
+          return (
+            <li
+              key={r.id}
+              className={`group relative flex items-center gap-2 px-3 py-1.5 ${
+                isMe ? 'bg-[var(--accent-amber)]/[0.06]' : ''
+              }`}
+            >
+              <span
+                className="absolute inset-y-0 left-0 -z-10 transition-[width]"
+                style={{
+                  width: `${pct}%`,
+                  background:
+                    i === 0
+                      ? 'linear-gradient(to right, rgba(245,194,69,0.18), rgba(245,194,69,0.02))'
+                      : `linear-gradient(to right, ${r.p?.color ?? '#3a3f4d'}1a, transparent)`,
+                }}
+              />
+              <span className="w-5 text-right text-[10px] tabular-nums tnum text-[var(--fg-dim)]">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span className="chip" style={{ background: r.p?.color ?? '#666' }} />
+              <span className="truncate text-[var(--fg)]">
+                {r.p?.name ?? r.id.slice(0, 6)}
+              </span>
+              {r.big > 0 && (
+                <span className="text-[9px] font-bold text-[var(--accent-amber)]">
+                  ★{r.big}
+                </span>
+              )}
+              <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums tnum text-[var(--fg)]">
+                {r.n}
+              </span>
+            </li>
+          );
+        })}
+        {rows.length === 0 && (
+          <li className="px-3 py-6 text-center text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
+            no captures
           </li>
-        ))}
-        {rows.length === 0 && <li className="text-neutral-500">No captures yet</li>}
+        )}
       </ol>
     </section>
   );

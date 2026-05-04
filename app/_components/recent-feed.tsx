@@ -4,6 +4,16 @@ import { useStore } from '@/lib/store';
 import { fetchRecentCaptures } from '@/lib/api/captures';
 import { ensurePlayers } from '@/lib/api/players';
 
+function fmtAgo(ts: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
 export function RecentFeed() {
   const feed = useStore((s) => s.feed);
   const players = useStore((s) => s.players);
@@ -31,35 +41,52 @@ export function RecentFeed() {
   }, [pushFeed]);
 
   return (
-    <aside className="flex h-full w-full flex-col border-r border-neutral-900 bg-neutral-950">
-      <h2 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-        Recent captures
-      </h2>
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
-        <ul className="space-y-1 text-sm">
+    <aside className="flex h-full w-full flex-col border-r border-[var(--line)] bg-[var(--bg-panel)]">
+      <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="h-1 w-3 bg-[var(--accent-amber)]" />
+          <span className="label">FEED</span>
+        </div>
+        <span className="label tnum">{String(feed.length).padStart(2, '0')}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <ul className="divide-y divide-[var(--line)]/50">
           {feed.map((i) => {
             const p = players.get(i.playerId);
             return (
               <li
                 key={i.key}
-                className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-neutral-900"
+                className="feed-in group flex items-center gap-2 px-3 py-1.5 text-[11px]"
               >
                 <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: p?.color ?? '#888' }}
+                  className="chip"
+                  style={{ background: p?.color ?? '#666' }}
                 />
-                <span className="truncate font-medium">{p?.name ?? '…'}</span>
-                <span className="text-neutral-400">claimed</span>
-                <span className="font-mono text-xs text-neutral-300">{i.tileId}</span>
+                <span className="max-w-[80px] truncate font-medium text-[var(--fg)]">
+                  {p?.name ?? '·····'}
+                </span>
+                <span className="text-[var(--fg-dim)]">→</span>
+                <span className="font-mono text-[10px] text-[var(--fg-muted)] tnum">
+                  {i.tileId}
+                </span>
                 {i.kind === 'big' && (
-                  <span className="ml-auto rounded bg-amber-500/20 px-1.5 text-[10px] text-amber-300">
-                    big
+                  <span className="ml-auto bg-[var(--accent-amber)]/15 px-1 py-px text-[9px] font-bold tracking-[0.15em] text-[var(--accent-amber)]">
+                    ★ BIG
+                  </span>
+                )}
+                {i.kind !== 'big' && (
+                  <span className="ml-auto text-[10px] text-[var(--fg-dim)] tnum">
+                    {fmtAgo(i.ts)}
                   </span>
                 )}
               </li>
             );
           })}
-          {feed.length === 0 && <li className="text-neutral-500">No captures yet</li>}
+          {feed.length === 0 && (
+            <li className="px-3 py-6 text-center text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
+              awaiting signal
+            </li>
+          )}
         </ul>
       </div>
     </aside>

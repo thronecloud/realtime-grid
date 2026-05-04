@@ -52,24 +52,40 @@ export default function HomePage() {
   }
 
   return (
-    <main className="flex h-screen flex-col">
+    <main className="flex h-screen flex-col bg-[var(--bg-base)]">
       <Topbar />
-      <div className="flex flex-1 flex-col overflow-hidden md:grid md:grid-cols-[260px_1fr_260px]">
+      <div className="flex flex-1 flex-col overflow-hidden md:grid md:grid-cols-[280px_1fr_280px]">
         <div className="hidden md:block">
           <RecentFeed />
         </div>
-        <div className="relative flex-1">
+        <div className="relative flex-1 bg-[var(--bg-void)]">
           {auth.status === 'ready' && me && (
             <GridCanvas onCaptureRejected={(reason) => toast(reason)} />
           )}
           <HoverTooltip />
+          {/* Crosshair frame on the canvas viewport */}
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute left-3 top-3 flex items-center gap-2 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
+              <span className="h-1 w-1 animate-pulse bg-[var(--accent-signal)]" />
+              <span>RADAR · LIVE</span>
+            </div>
+            <div className="absolute right-3 top-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
+              GRID 100×100 · BIG ×100
+            </div>
+            <div className="absolute bottom-3 left-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
+              DRAG · PAN  ·  WHEEL · ZOOM
+            </div>
+            <div className="absolute bottom-3 right-3 text-[9px] uppercase tracking-[0.25em] text-[var(--fg-dim)]">
+              CLICK · CAPTURE
+            </div>
+          </div>
         </div>
-        <aside className="hidden overflow-y-auto border-l border-neutral-900 bg-neutral-950 md:block">
+        <aside className="hidden overflow-y-auto border-l border-[var(--line)] bg-[var(--bg-panel)] md:block">
           <Leaderboard />
           <HotStreak />
         </aside>
-        <div className="flex h-44 overflow-y-auto border-t border-neutral-900 bg-neutral-950 md:hidden">
-          <div className="w-1/2 border-r border-neutral-900">
+        <div className="flex h-44 overflow-y-auto border-t border-[var(--line)] bg-[var(--bg-panel)] md:hidden">
+          <div className="w-1/2 border-r border-[var(--line)]">
             <Leaderboard />
           </div>
           <div className="w-1/2">

@@ -6,21 +6,52 @@ import { CooldownIndicator } from './cooldown-indicator';
 export function Topbar() {
   const me = useStore((s) => s.me);
   return (
-    <header className="flex items-center justify-between border-b border-neutral-900 bg-neutral-950/95 px-4 py-2 backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="h-3 w-3 rounded-sm bg-gradient-to-br from-amber-400 to-rose-500" />
-        <h1 className="text-sm font-semibold tracking-wide">Realtime Grid</h1>
+    <header
+      className="relative flex h-12 items-stretch border-b border-[var(--line)] bg-[var(--bg-base)]/95 backdrop-blur-sm"
+      style={{
+        backgroundImage:
+          'linear-gradient(to bottom, rgba(245,194,69,0.04), transparent 70%)',
+      }}
+    >
+      {/* Logo */}
+      <div className="flex items-center gap-3 border-r border-[var(--line)] px-4">
+        <div className="relative h-4 w-4">
+          <span className="absolute inset-0 bg-[var(--accent-amber)]" />
+          <span className="absolute inset-[3px] bg-[var(--bg-void)]" />
+          <span className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 bg-[var(--accent-amber)]" />
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[13px] font-bold uppercase tracking-[0.2em] text-[var(--fg)]">
+            GRID
+          </span>
+          <span className="label">/ Realtime · 100×100</span>
+        </div>
       </div>
-      <div className="flex items-center gap-4">
+
+      {/* Spacer with optional ticker hint */}
+      <div className="flex flex-1 items-center px-4 text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
+        <span className="hidden sm:inline">
+          // CLICK A TILE TO CLAIM · 10s COOLDOWN · 7d OWNERSHIP
+        </span>
+      </div>
+
+      {/* Cooldown */}
+      <div className="hidden items-center border-l border-[var(--line)] px-4 sm:flex">
         <CooldownIndicator />
-        <PresencePill />
-        {me && (
-          <div className="flex items-center gap-2 rounded-full bg-neutral-900 px-3 py-1 text-sm">
-            <span className="h-2 w-2 rounded-full" style={{ background: me.color }} />
-            <span>{me.name}</span>
-          </div>
-        )}
       </div>
+
+      {/* Presence */}
+      <div className="flex items-center border-l border-[var(--line)] px-3">
+        <PresencePill />
+      </div>
+
+      {/* Me */}
+      {me && (
+        <div className="flex items-center gap-2 border-l border-[var(--line)] px-3">
+          <span className="chip" style={{ background: me.color }} />
+          <span className="text-[11px] text-[var(--fg)]">{me.name}</span>
+        </div>
+      )}
     </header>
   );
 }
