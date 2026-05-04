@@ -15,6 +15,10 @@ let worldChannel: RealtimeChannel | null = null;
 
 export async function startRealtime(opts: {
   me: { id: string; name: string; color: string };
+  // Fired when ANOTHER player captures a multiplier tile. The captor's own
+  // jackpot banner is already fired locally by grid-canvas on RPC return,
+  // so we filter `playerId !== me.id` before calling this.
+  onPeerJackpot?: (args: { mult: number; name: string; color: string }) => void;
 }): Promise<RealtimeHandle> {
   const sb = getSupabaseBrowser();
   const store = useStore.getState();
@@ -69,7 +73,7 @@ export async function startRealtime(opts: {
         .map((p) => ({ id: p.id, name: p.name, color: p.color }));
       useStore.getState().setOnline(peers);
     })
-    .on('broadcast', { event: 'capture' }, (msg) => {
+    .on('broadcast', { event: 'capture' }, async (msg) => {
       const p = msg.payload as { playerId: string; tileId: string; kind: TileKind };
       const ts = Date.now();
       useStore.getState().pushFeed({
@@ -79,7 +83,23 @@ export async function startRealtime(opts: {
         kind: p.kind,
         ts,
       });
-      ensurePlayers([p.playerId]);
+      // Make sure we have the captor's player record so the toast can show
+      // their name + color.
+      await ensurePlayers([p.playerId]);
+      // Peer jackpot: other player hit a multiplier. Captor's own celebration
+      // is already fired locally on RPC return.
+      if (
+        opts.onPeerJackpot &&
+        p.playerId !== opts.me.id &&
+        (p.kind === 'mult5' || p.kind === 'mult10')
+      ) {
+        const peer = useStore.getState().players.get(p.playerId);
+        opts.onPeerJackpot({
+          mult: p.kind === 'mult10' ? 10 : 5,
+          name: peer?.name ?? '·····',
+          color: peer?.color ?? '#888',
+        });
+      }
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {

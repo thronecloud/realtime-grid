@@ -32,11 +32,8 @@ export function HotStreak() {
     <section>
       <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="h-1 w-3 bg-[var(--accent-signal)]" />
-          <span className="label">HOT STREAK</span>
-          <span className="text-[9px] tracking-[0.2em] text-[var(--fg-dim)]">
-            ·1H WINDOW
-          </span>
+          <span className="text-[var(--accent-signal)] text-[10px]">▸</span>
+          <span className="label">HOT · 1H</span>
         </div>
         <span className={`text-[9px] uppercase tracking-[0.2em] text-[var(--fg-dim)] ${loading ? 'blink' : ''}`}>
           {loading ? 'SCAN' : 'LIVE'}

@@ -25,8 +25,16 @@ const GRID = '#1c2230';
 const UNCLAIMED = '#21263a';      // brighter so the grid texture is always visible
 const UNCLAIMED_ALT = '#1c2030';  // checker contrast cell — every other column
 
-function colorFor(t: TileRow, players: Map<string, PlayerRow>): string {
-  return players.get(t.owner_id)?.color ?? '#6b7280';
+// Owner color drawn at 85% alpha so the underlying grid texture peeks
+// through and the canvas reads as a single map, not a quilt of opaque cells.
+function colorForRgba(t: TileRow, players: Map<string, PlayerRow>): string {
+  const hex = players.get(t.owner_id)?.color ?? '#6b7280';
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return hex;
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  return `rgba(${r},${g},${b},0.85)`;
 }
 
 export function paint(input: PaintInput) {
@@ -56,14 +64,23 @@ export function paint(input: PaintInput) {
       // Subtle 2x2 checker on unclaimed cells so the grid texture reads as a
       // grid even when no tiles are captured.
       const checker = ((cx + cy) & 1) === 0 ? UNCLAIMED : UNCLAIMED_ALT;
-      ctx.fillStyle = t ? colorFor(t, players) : checker;
-      ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
+      // Owned cells need the unclaimed checker beneath the alpha-85 owner
+      // color so the grid texture stays continuous.
+      if (t) {
+        ctx.fillStyle = checker;
+        ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
+        ctx.fillStyle = colorForRgba(t, players);
+        ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
+      } else {
+        ctx.fillStyle = checker;
+        ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
+      }
 
-      // Capture flash — instant white pulse on any new ownership write
+      // Capture flash — 220ms signal-green pulse on any new ownership write
       const f = flashes.get(id);
       if (f && f > now) {
         const a = (f - now) / 220;
-        ctx.fillStyle = `rgba(255,255,255,${0.55 * a})`;
+        ctx.fillStyle = `rgba(74,222,128,${0.5 * a})`;
         ctx.fillRect(screen.x, screen.y, cellPx, cellPx);
       }
 
@@ -98,10 +115,10 @@ export function paint(input: PaintInput) {
     }
   }
 
-  // Hover ring
+  // Hover ring — amber to match accent system
   if (hovered) {
     const screen = worldToScreen(camera, hovered.x * TILE_PX, hovered.y * TILE_PX);
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#f5c245';
     ctx.lineWidth = 2;
     ctx.strokeRect(screen.x + 1, screen.y + 1, cellPx - 2, cellPx - 2);
   }

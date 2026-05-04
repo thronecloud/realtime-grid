@@ -78,11 +78,17 @@ export function GridCanvas({ onCaptureRejected, onJackpot }: Props) {
 
   async function handleClick(cellX: number, cellY: number) {
     const s = useStore.getState();
+    const tileId = `s:${cellX},${cellY}`;
+    // Silent no-op when the click lands on a tile we already own — clicking
+    // your own territory shouldn't fire a "rejected" toast.
+    const existing = s.tiles.get(tileId);
+    if (existing && s.userId && existing.owner_id === s.userId) {
+      return;
+    }
     if (s.cooldownUntil && Date.now() < s.cooldownUntil) {
       onCaptureRejected?.('cooldown');
       return;
     }
-    const tileId = `s:${cellX},${cellY}`;
     // Optimistic — assume normal tile. The server-returned kind reveals the
     // multiplier; we then upgrade and fire the jackpot animation.
     const optimistic: TileRow = {

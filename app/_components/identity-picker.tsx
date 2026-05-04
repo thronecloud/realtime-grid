@@ -11,6 +11,19 @@ interface Props {
 
 const SUGGESTED_NAMES = ['NORTH', 'KAIRO', 'HEX', 'OBSIDIAN', 'CIPHER', 'EMBER', 'VALKYRIE', 'ATLAS'];
 
+// 8-color preset palette, hand-picked for vibrancy on the dark grid + good
+// inter-color contrast so neighboring tiles stay distinguishable.
+const PRESETS = [
+  '#f5c245', // amber
+  '#4ade80', // signal green
+  '#60a5fa', // sky blue
+  '#f472b6', // pink
+  '#a78bfa', // purple
+  '#22d3ee', // cyan
+  '#fb923c', // orange
+  '#ef4444', // alert red
+];
+
 export function IdentityPicker({ open, onSubmit, initialName = '', initialColor }: Props) {
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor ?? randomPlayerColor());
@@ -100,8 +113,29 @@ export function IdentityPicker({ open, onSubmit, initialName = '', initialColor 
           {/* Color */}
           <div>
             <span className="label mb-1.5 block">SQUAD COLOR</span>
-            <div className="flex items-center gap-3">
-              <label className="relative inline-flex h-12 w-12 cursor-pointer items-center justify-center border border-[var(--line)] bg-[var(--bg-sunken)] transition hover:border-[var(--accent-amber)]/60">
+            {/* Preset palette: 8 vibrant swatches, dashed outline on the
+                active one. Custom color picker still available below. */}
+            <div className="grid grid-cols-8 gap-1.5">
+              {PRESETS.map((c) => {
+                const active = c.toLowerCase() === color.toLowerCase();
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    aria-label={`Pick color ${c}`}
+                    className="aspect-square w-full"
+                    style={{
+                      background: c,
+                      outline: active ? '1.5px dashed var(--fg)' : '1px solid rgba(255,255,255,0.08)',
+                      outlineOffset: active ? '3px' : '-1px',
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <label className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center border border-[var(--line)] bg-[var(--bg-sunken)] transition hover:border-[var(--accent-amber)]/60">
                 <input
                   type="color"
                   value={color}
@@ -109,7 +143,7 @@ export function IdentityPicker({ open, onSubmit, initialName = '', initialColor 
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 />
                 <span
-                  className="block h-6 w-6"
+                  className="block h-4 w-4"
                   style={{
                     background: color,
                     boxShadow:
@@ -126,7 +160,7 @@ export function IdentityPicker({ open, onSubmit, initialName = '', initialColor 
                 <span>SHUFFLE</span>
               </button>
               <span
-                className="ml-auto font-mono text-[10px] uppercase tabular-nums tnum text-[var(--fg-dim)]"
+                className="ml-auto font-mono text-[10px] uppercase tabular-nums tnum"
                 style={{ color }}
               >
                 {color}

@@ -35,7 +35,7 @@ export function Leaderboard() {
     <section className="border-b border-[var(--line)]">
       <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="h-1 w-3 bg-[var(--accent-amber)]" />
+          <span className="text-[var(--accent-amber)] text-[10px]">▸</span>
           <span className="label">LEADERBOARD</span>
         </div>
         <span className="label">TOP 10</span>
@@ -81,7 +81,7 @@ export function Leaderboard() {
         })}
         {rows.length === 0 && (
           <li className="px-3 py-6 text-center text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
-            no captures
+            // no captures
           </li>
         )}
       </ol>

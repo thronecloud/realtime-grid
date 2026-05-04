@@ -47,7 +47,7 @@ export function Topbar() {
 
       {/* Me */}
       {me && (
-        <div className="flex items-center gap-2 border-l border-[var(--line)] px-3">
+        <div className="flex items-center gap-2 border-l border-[var(--line)] bg-[var(--bg-void)] px-3">
           <span className="chip" style={{ background: me.color }} />
           <span className="text-[11px] text-[var(--fg)]">{me.name}</span>
         </div>

@@ -44,8 +44,8 @@ export function RecentFeed() {
     <aside className="flex h-full w-full flex-col border-r border-[var(--line)] bg-[var(--bg-panel)]">
       <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="h-1 w-3 bg-[var(--accent-amber)]" />
-          <span className="label">FEED</span>
+          <span className="text-[var(--accent-amber)] text-[10px]">▸</span>
+          <span className="label">LIVE FEED</span>
         </div>
         <span className="label tnum">{String(feed.length).padStart(2, '0')}</span>
       </div>
@@ -54,10 +54,13 @@ export function RecentFeed() {
           {feed.map((i) => {
             const p = players.get(i.playerId);
             const mult = i.kind === 'mult10' ? 10 : i.kind === 'mult5' ? 5 : 1;
+            const isFresh = mult > 1 && Date.now() - i.ts < 4000;
             return (
               <li
                 key={i.key}
-                className="feed-in group flex items-center gap-2 px-3 py-1.5 text-[11px]"
+                className={`feed-in group flex items-center gap-2 px-3 py-1.5 text-[11px] ${
+                  isFresh ? 'feed-jackpot' : ''
+                }`}
               >
                 <span
                   className="chip"
@@ -89,8 +92,9 @@ export function RecentFeed() {
             );
           })}
           {feed.length === 0 && (
-            <li className="px-3 py-6 text-center text-[10px] uppercase tracking-[0.2em] text-[var(--fg-dim)]">
-              awaiting signal
+            <li className="px-3 py-6 text-center text-[10px] tracking-[0.18em] text-[var(--fg-dim)]">
+              <span className="block uppercase">// no signal yet</span>
+              <span className="mt-1 block normal-case text-[var(--fg-muted)]">be the first to claim a tile.</span>
             </li>
           )}
         </ul>

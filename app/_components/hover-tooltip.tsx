@@ -10,6 +10,12 @@ function fmtRel(iso: string): string {
   return `${days}d ${hours}h`;
 }
 
+// HUD tooltip with two variants:
+//   FREE  — "+1 pt · 7d lock" + "click to claim". Multipliers stay hidden;
+//           even if this cell is a secret jackpot, the tooltip never reveals
+//           it (otherwise the slot-machine surprise dies).
+//   OWNED — owner chip + name + expires-in. The captured kind is now public,
+//           so a 5x/10x badge is fine here.
 export function HoverTooltip() {
   const hoverScreen = useStore((s) => s.hoverScreen);
   const hoverCell = useStore((s) => s.hoverCell);
@@ -20,7 +26,7 @@ export function HoverTooltip() {
   const id = `s:${hoverCell.x},${hoverCell.y}`;
   const t = tiles.get(id);
   const p = t ? players.get(t.owner_id) : null;
-  const mult = t?.kind === 'mult10' ? 10 : t?.kind === 'mult5' ? 5 : 1;
+  const ownedMult = t?.kind === 'mult10' ? 10 : t?.kind === 'mult5' ? 5 : 1;
 
   const style: React.CSSProperties = {
     left: hoverScreen.x + 14,
@@ -38,9 +44,9 @@ export function HoverTooltip() {
         <span className="font-mono text-[11px] tabular-nums tnum text-[var(--fg)]">
           {hoverCell.x},{hoverCell.y}
         </span>
-        {mult > 1 && (
+        {t && ownedMult > 1 && (
           <span className="bg-[var(--accent-amber)]/20 px-1 py-px text-[8px] font-bold tracking-[0.2em] text-[var(--accent-amber)]">
-            ✦ {mult}× JACKPOT
+            ✦ {ownedMult}× JACKPOT
           </span>
         )}
       </div>
@@ -60,11 +66,16 @@ export function HoverTooltip() {
             </div>
           </>
         ) : (
-          <div className="flex items-center gap-2">
-            <span className="label w-14">STATUS</span>
-            <span className="text-[var(--accent-signal)]">UNCLAIMED</span>
-            <span className="ml-auto text-[var(--fg-dim)]">click to capture</span>
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              <span className="label w-14">STATUS</span>
+              <span className="text-[var(--accent-signal)]">FREE · click to claim</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="label w-14">REWARD</span>
+              <span className="font-mono text-[var(--fg-muted)]">+1 pt · 7d lock</span>
+            </div>
+          </>
         )}
       </div>
     </div>

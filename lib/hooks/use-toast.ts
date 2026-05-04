@@ -1,7 +1,11 @@
 'use client';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 export function useToast() {
+  // Module-instance throttle for peer jackpot toasts. Self captures always
+  // fire (the captor deserves their celebratory moment); peer captures are
+  // gated to one banner per ~1.5s so a busy server doesn't drown the screen.
+  const peerLastFiredAt = useRef(0);
   const toast = useCallback((reason: string) => {
     const map: Record<string, string> = {
       cooldown: 'Cooldown — wait a moment',
@@ -68,5 +72,45 @@ export function useToast() {
     }, isMega ? 1900 : 1300);
   }, []);
 
-  return { toast, jackpot };
+  // Smaller, top-right banner for OTHER players' multiplier captures.
+  // Throttled to 1.5s so a flurry of peer jackpots doesn't spam the screen.
+  const peerJackpot = useCallback((args: { mult: number; name: string; color: string }) => {
+    if (typeof document === 'undefined') return;
+    const now = Date.now();
+    if (now - peerLastFiredAt.current < 1500) return;
+    peerLastFiredAt.current = now;
+    const wrap = document.createElement('div');
+    wrap.className = 'pointer-events-none fixed right-4 top-20 z-40';
+    const inner = document.createElement('div');
+    inner.className =
+      'flex items-center gap-2 border border-[var(--accent-amber)]/40 bg-[var(--bg-panel)]/95 px-3 py-2 text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--accent-amber)] backdrop-blur';
+    inner.style.boxShadow = '0 0 18px rgba(245,194,69,0.25)';
+    inner.innerHTML = `
+      <span style="color:var(--fg-muted);font-size:10px">✦</span>
+      <span style="color:${args.color};">${args.name.slice(0, 16)}</span>
+      <span style="color:var(--fg-muted)">hit</span>
+      <span>${args.mult}×</span>
+    `;
+    wrap.appendChild(inner);
+    document.body.appendChild(wrap);
+    inner.animate(
+      [
+        { opacity: 0, transform: 'translateY(-6px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ],
+      { duration: 180, fill: 'forwards' },
+    );
+    setTimeout(() => {
+      inner.animate(
+        [
+          { opacity: 1, transform: 'translateY(0)' },
+          { opacity: 0, transform: 'translateY(-6px)' },
+        ],
+        { duration: 220, fill: 'forwards' },
+      );
+      setTimeout(() => wrap.remove(), 240);
+    }, 1100);
+  }, []);
+
+  return { toast, jackpot, peerJackpot };
 }
